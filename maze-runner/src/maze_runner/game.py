@@ -442,6 +442,11 @@ class Game:
             self.toggle_language()
             self.menu_buttons = []  # Recreate buttons with updated text
             self.menu_animation_progress = 0.0  # Reset animation
+        elif action == "about":
+            self.menu_state = "about"
+            self.selected_button = 0
+            self.menu_buttons = []
+            self.menu_animation_progress = 0.0  # Reset animation
         elif action == "clear":
             # Clear progress and restart
             self.save_manager.clear_progress()
@@ -473,6 +478,7 @@ class Game:
                 {"text": self.t("press_enter"), "action": "play", "icon": "▶"},
                 {"text": self.t("toggle_theme"), "action": "theme", "icon": "◐"},
                 {"text": self.t("toggle_lang"), "action": "lang", "icon": "🌐"},
+                {"text": "About", "action": "about", "icon": "ℹ"},
                 {"text": self.t("press_clear"), "action": "clear", "icon": "✖"},
                 {"text": self.t("press_quit"), "action": "quit", "icon": "✕"},
             ]
@@ -575,7 +581,10 @@ class Game:
             self.menu_animation_progress = 0.0  # Reset animation on menu change
         
         # Draw title with glow effect and slide-in
-        title = self.font_big.render(self.t("title"), True, COLOR_ACCENT)
+        if self.menu_state == "about":
+            title = self.font_big.render("About Maze Runner", True, COLOR_ACCENT)
+        else:
+            title = self.font_big.render(self.t("title"), True, COLOR_ACCENT)
         title_x = self.width // 2 - title.get_width() // 2
         title_y = int(60 + (100 - 60) * (1 - self.menu_animation_progress))  # Slide from top
         
@@ -586,17 +595,56 @@ class Game:
         
         self.screen.blit(title, (title_x, title_y))
         
-        # Draw stats section with slide-in
-        stats_bg = pygame.Rect(self.width // 2 - 150, 120, 300, 40)
-        stats_y = int(120 + (150 - 120) * (1 - self.menu_animation_progress))  # Slide from top
-        stats_bg.y = stats_y
-        pygame.draw.rect(self.screen, COLOR_WALL, stats_bg, border_radius=10)
-        pygame.draw.rect(self.screen, COLOR_WALL_EDGE, stats_bg, 1, border_radius=10)
-        
-        stats_text = f"{self.t('level')} {self.level_num} | {self.t('levels_completed')}: {len([t for t in self.best_times.values() if t > 0])}"
-        font_small = self.persian_font if self.language == "fa" else self.font_small
-        stats_surf = font_small.render(stats_text, True, COLOR_TEXT)
-        self.screen.blit(stats_surf, (stats_bg.centerx - stats_surf.get_width() // 2, stats_bg.centery - stats_surf.get_height() // 2))
+        # Draw about content
+        if self.menu_state == "about":
+            font_small = self.persian_font if self.language == "fa" else self.font_small
+            font_medium = self.persian_font if self.language == "fa" else self.font_medium
+            
+            about_lines = [
+                "Version: 1.0.0",
+                "",
+                "Features:",
+                "• Infinite procedurally generated mazes",
+                "• Random exit on outer walls",
+                "• Smooth pixel-based movement",
+                "• Dark/Light theme support",
+                "• Bilingual: English & Persian",
+                "• Mouse and keyboard controls",
+                "• Responsive window sizing",
+                "• Progress saving",
+                "",
+                "Controls:",
+                "• Arrow keys / WASD to move",
+                "• Mouse click to move",
+                "• Q to return to menu",
+                "• T to toggle theme",
+                "• L to toggle language",
+                "",
+                "Made with Python & Pygame",
+            ]
+            
+            y = 140
+            for line in about_lines:
+                alpha = int(255 * self.menu_animation_progress)
+                if "Features:" in line or "Controls:" in line:
+                    surf = font_medium.render(line, True, COLOR_ACCENT)
+                else:
+                    surf = font_small.render(line, True, COLOR_TEXT)
+                surf.set_alpha(alpha)
+                self.screen.blit(surf, (self.width // 2 - surf.get_width() // 2, y))
+                y += 28
+        else:
+            # Draw stats section with slide-in
+            stats_bg = pygame.Rect(self.width // 2 - 150, 120, 300, 40)
+            stats_y = int(120 + (150 - 120) * (1 - self.menu_animation_progress))  # Slide from top
+            stats_bg.y = stats_y
+            pygame.draw.rect(self.screen, COLOR_WALL, stats_bg, border_radius=10)
+            pygame.draw.rect(self.screen, COLOR_WALL_EDGE, stats_bg, 1, border_radius=10)
+            
+            stats_text = f"{self.t('level')} {self.level_num} | {self.t('levels_completed')}: {len([t for t in self.best_times.values() if t > 0])}"
+            font_small = self.persian_font if self.language == "fa" else self.font_small
+            stats_surf = font_small.render(stats_text, True, COLOR_TEXT)
+            self.screen.blit(stats_surf, (stats_bg.centerx - stats_surf.get_width() // 2, stats_bg.centery - stats_surf.get_height() // 2))
         
         # Draw buttons with staggered slide-in animation
         mouse_pos = pygame.mouse.get_pos()
@@ -626,7 +674,10 @@ class Game:
             button["rect"].y = original_y
         
         # Draw instructions at bottom with fade-in
-        instructions = self.t("menu_move") + " | " + self.t("menu_find_exit")
+        if self.menu_state == "about":
+            instructions = "Press Back to return"
+        else:
+            instructions = self.t("menu_move") + " | " + self.t("menu_find_exit")
         inst_surf = font_small.render(instructions, True, COLOR_TEXT_DIM)
         inst_alpha = int(255 * self.menu_animation_progress)
         inst_surf.set_alpha(inst_alpha)
