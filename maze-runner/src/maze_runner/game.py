@@ -111,6 +111,10 @@ class Game:
         # Animation variables
         self.menu_animation_progress = 0.0
         self.menu_animation_speed = 0.05
+        
+        # Settings variables
+        self.move_speed_setting = 4
+        self.mouse_sensitivity = 3
 
         self.state = STATE_MENU
         self.grid = None
@@ -434,6 +438,11 @@ class Game:
             self.load_level(self.level_num)
             self.menu_buttons = []  # Clear buttons for next menu
             self.menu_animation_progress = 0.0  # Reset animation
+        elif action == "settings":
+            self.menu_state = "settings"
+            self.selected_button = 0
+            self.menu_buttons = []
+            self.menu_animation_progress = 0.0  # Reset animation
         elif action == "theme":
             self.toggle_theme()
             self.menu_buttons = []  # Recreate buttons with updated text
@@ -442,6 +451,14 @@ class Game:
             self.toggle_language()
             self.menu_buttons = []  # Recreate buttons with updated text
             self.menu_animation_progress = 0.0  # Reset animation
+        elif action == "speed_up":
+            self.move_speed_setting = (self.move_speed_setting % 8) + 2  # Cycle 2-8
+            self.move_speed = self.move_speed_setting
+            self.menu_buttons = []  # Recreate buttons with updated text
+        elif action == "sens_up":
+            self.mouse_sensitivity = (self.mouse_sensitivity % 6) + 1  # Cycle 1-6
+            self.mouse_speed = self.mouse_sensitivity
+            self.menu_buttons = []  # Recreate buttons with updated text
         elif action == "about":
             self.menu_state = "about"
             self.selected_button = 0
@@ -476,6 +493,7 @@ class Game:
         if self.menu_state == "main":
             buttons = [
                 {"text": self.t("press_enter"), "action": "play", "icon": "▶"},
+                {"text": "Settings", "action": "settings", "icon": "⚙"},
                 {"text": self.t("toggle_theme"), "action": "theme", "icon": "◐"},
                 {"text": self.t("toggle_lang"), "action": "lang", "icon": "🌐"},
                 {"text": "About", "action": "about", "icon": "ℹ"},
@@ -484,8 +502,10 @@ class Game:
             ]
         elif self.menu_state == "settings":
             buttons = [
-                {"text": self.t("toggle_theme"), "action": "theme", "icon": "◐"},
-                {"text": self.t("toggle_lang"), "action": "lang", "icon": "🌐"},
+                {"text": f"Theme: {'Dark' if self.dark_mode else 'Light'}", "action": "theme", "icon": "◐"},
+                {"text": f"Language: {'English' if self.language == 'en' else 'Persian'}", "action": "lang", "icon": "🌐"},
+                {"text": f"Move Speed: {self.move_speed_setting}", "action": "speed_up", "icon": "⬆"},
+                {"text": f"Mouse Sens: {self.mouse_sensitivity}", "action": "sens_up", "icon": "⬆"},
                 {"text": "Back", "action": "back", "icon": "◀"},
             ]
         elif self.menu_state == "about":
