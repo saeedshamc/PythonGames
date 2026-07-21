@@ -243,12 +243,15 @@ class SnakeGame:
                 return pos
 
     def spawn_power_up(self):
-        """Randomly spawn a power-up."""
+        """Randomly spawn a power-up with increased chance at higher scores."""
         if self.power_up is not None:
             return
         
-        # 10% chance to spawn a power-up
-        if random.random() < 0.1:
+        # Spawn rate increases with score: 10% base + 0.5% per 10 points
+        spawn_chance = 0.1 + (self.score / 2000)  # Up to 35% at 500 points
+        spawn_chance = min(spawn_chance, 0.35)  # Cap at 35%
+        
+        if random.random() < spawn_chance:
             power_up_types = ['golden', 'blue', 'purple']
             self.power_up_type = random.choice(power_up_types)
             
