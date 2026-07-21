@@ -144,6 +144,9 @@ class Game:
         # User customization variables
         self.player_name = "Player"
         self.player_color = COLOR_PLAYER
+        
+        # Level history tracking
+        self.completed_levels = []  # List of completed level numbers
 
         self.state = STATE_MENU
         self.grid = None
@@ -396,6 +399,9 @@ class Game:
         if self.level_num not in self.best_times or self.elapsed < self.best_times[self.level_num]:
             self.best_times[self.level_num] = self.elapsed
         self.total_play_time += self.elapsed
+        # Track completed level
+        if self.level_num not in self.completed_levels:
+            self.completed_levels.append(self.level_num)
         # Add to leaderboard
         self.save_manager.add_to_leaderboard(self.level_num, self.elapsed)
         # Save progress
@@ -629,6 +635,15 @@ class Game:
             current_index = modes.index(self.input_mode)
             self.input_mode = modes[(current_index + 1) % len(modes)]
             self.menu_buttons = []  # Recreate buttons with updated text
+        elif action == "levels":
+            self.menu_state = "levels"
+            self.selected_button = 0
+            self.menu_buttons = []
+            self.menu_animation_progress = 0.0  # Reset animation
+        elif action.startswith("level_"):
+            # Load specific level for replay
+            level_num = int(action.split("_")[1])
+            self.load_level(level_num)
         elif action == "about":
             self.menu_state = "about"
             self.selected_button = 0
@@ -663,6 +678,7 @@ class Game:
         if self.menu_state == "main":
             buttons = [
                 {"text": self.t("press_enter"), "action": "play", "icon": "▶"},
+                {"text": "Levels", "action": "levels", "icon": "📋"},
                 {"text": "Settings", "action": "settings", "icon": "⚙"},
                 {"text": self.t("toggle_theme"), "action": "theme", "icon": "◐"},
                 {"text": self.t("toggle_lang"), "action": "lang", "icon": "🌐"},
@@ -686,6 +702,14 @@ class Game:
             buttons = [
                 {"text": "Back", "action": "back", "icon": "◀"},
             ]
+        elif self.menu_state == "levels":
+            buttons = [
+                {"text": "Back", "action": "back", "icon": "◀"},
+            ]
+            # Add level buttons for completed levels
+            for level in sorted(self.completed_levels, reverse=True):
+                time_str = f"{self.best_times.get(level, 0):.1f}s" if level in self.best_times else "--"
+                buttons.insert(-1, {"text": f"Level {level} ({time_str})", "action": f"level_{level}", "icon": "🎯"})
         
         for i, btn in enumerate(buttons):
             rect = pygame.Rect(
@@ -830,6 +854,19 @@ class Game:
                 surf.set_alpha(alpha)
                 self.screen.blit(surf, (self.width // 2 - surf.get_width() // 2, y))
                 y += 28
+        elif self.menu_state == "levels":
+            font_small = self.persian_font if self.language == "fa" else self.font_small
+            font_medium = self.persian_font if self.language == "fa" else self.font_medium
+            
+            if not self.completed_levels:
+                title = font_medium.render("No completed levels yet", True, COLOR_TEXT_DIM)
+                self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 200))
+            else:
+                title = font_medium.render("Completed Levels", True, COLOR_ACCENT)
+                self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 140))
+                
+                count_text = font_small.render(f"Total: {len(self.completed_levels)} levels", True, COLOR_TEXT)
+                self.screen.blit(count_text, (self.width // 2 - count_text.get_width() // 2, 180))
         else:
             # Draw stats section with slide-in
             stats_bg = pygame.Rect(self.width // 2 - 150, 120, 300, 40)
