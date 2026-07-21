@@ -605,6 +605,10 @@ class SnakeGame:
             self.clock.tick(self.fps)
 
 
-if __name__ == "__main__":
+def main():
+    """Entry point for the game when installed as a package."""
     game = SnakeGame()
     game.run()
+
+if __name__ == "__main__":
+    main()
