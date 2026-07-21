@@ -67,6 +67,10 @@ class Game:
         except:
             pass
         
+        # Accessibility variables (must be before apply_theme)
+        self.high_contrast_mode = False
+        self.tab_navigation = False
+        
         # Apply theme
         self.apply_theme()
         
@@ -130,10 +134,6 @@ class Game:
         self.preview_maze = None
         self.preview_rotation_timer = 0
         self.preview_rotation_interval = 180  # Change preview every 3 seconds
-        
-        # Accessibility variables
-        self.high_contrast_mode = False
-        self.tab_navigation = False
         
         # Menu sound variables
         self.last_hovered_button = -1
