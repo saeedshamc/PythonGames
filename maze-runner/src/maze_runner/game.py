@@ -107,6 +107,10 @@ class Game:
         self.menu_buttons = []
         self.selected_button = 0
         self.hovered_button = -1
+        
+        # Animation variables
+        self.menu_animation_progress = 0.0
+        self.menu_animation_speed = 0.05
 
         self.state = STATE_MENU
         self.grid = None
@@ -429,12 +433,15 @@ class Game:
             self.total_play_time = saved_data["total_play_time"]
             self.load_level(self.level_num)
             self.menu_buttons = []  # Clear buttons for next menu
+            self.menu_animation_progress = 0.0  # Reset animation
         elif action == "theme":
             self.toggle_theme()
             self.menu_buttons = []  # Recreate buttons with updated text
+            self.menu_animation_progress = 0.0  # Reset animation
         elif action == "lang":
             self.toggle_language()
             self.menu_buttons = []  # Recreate buttons with updated text
+            self.menu_animation_progress = 0.0  # Reset animation
         elif action == "clear":
             # Clear progress and restart
             self.save_manager.clear_progress()
@@ -442,6 +449,7 @@ class Game:
             self.best_times = {}
             self.total_play_time = 0
             self.menu_buttons = []
+            self.menu_animation_progress = 0.0  # Reset animation
         elif action == "quit":
             pygame.quit()
             sys.exit()
@@ -449,6 +457,7 @@ class Game:
             self.menu_state = "main"
             self.selected_button = 0
             self.menu_buttons = []
+            self.menu_animation_progress = 0.0  # Reset animation
     
     def create_menu_buttons(self):
         """Create button definitions for current menu state"""
@@ -493,7 +502,7 @@ class Game:
                 "index": i
             })
     
-    def draw_button(self, button, is_hovered, is_selected):
+    def draw_button(self, button, is_hovered, is_selected, animation_progress=1.0):
         """Draw a single menu button with effects"""
         rect = button["rect"]
         
@@ -511,11 +520,24 @@ class Game:
             text_color = COLOR_TEXT_DIM
             glow_intensity = 0
         
+        # Apply animation alpha
+        alpha = int(255 * animation_progress)
+        
         # Draw button background with rounded corners
-        pygame.draw.rect(self.screen, bg_color, rect, border_radius=12)
+        button_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(button_surf, (*bg_color, alpha), (0, 0, rect.width, rect.height), border_radius=12)
+        self.screen.blit(button_surf, rect.topleft)
+        
+        # Draw pulse effect for selected button
+        if is_selected and animation_progress >= 1:
+            pulse_intensity = int(10 + 5 * abs((self.anim_t % 60) - 30) / 30)
+            pulse_surf = pygame.Surface((rect.width + 30, rect.height + 30), pygame.SRCALPHA)
+            pygame.draw.rect(pulse_surf, (*COLOR_ACCENT, pulse_intensity), 
+                           (15, 15, rect.width, rect.height), border_radius=18)
+            self.screen.blit(pulse_surf, (rect.x - 15, rect.y - 15))
         
         # Draw glow effect if selected or hovered
-        if glow_intensity > 0:
+        if glow_intensity > 0 and animation_progress >= 1:
             glow_surf = pygame.Surface((rect.width + 20, rect.height + 20), pygame.SRCALPHA)
             pygame.draw.rect(glow_surf, (*COLOR_ACCENT, glow_intensity), 
                            (10, 10, rect.width, rect.height), border_radius=15)
@@ -528,12 +550,14 @@ class Game:
         # Draw icon
         font = self.persian_font if self.language == "fa" else self.font_medium
         icon_surf = font.render(button["icon"], True, text_color)
+        icon_surf.set_alpha(alpha)
         icon_x = rect.x + 20
         icon_y = rect.centery - icon_surf.get_height() // 2
         self.screen.blit(icon_surf, (icon_x, icon_y))
         
         # Draw text
         text_surf = font.render(button["text"], True, text_color)
+        text_surf.set_alpha(alpha)
         text_x = rect.centerx - text_surf.get_width() // 2
         text_y = rect.centery - text_surf.get_height() // 2
         self.screen.blit(text_surf, (text_x, text_y))
@@ -541,14 +565,19 @@ class Game:
     def draw_menu(self):
         self.screen.fill(COLOR_BG)
         
+        # Update animation progress
+        if self.menu_animation_progress < 1.0:
+            self.menu_animation_progress = min(1.0, self.menu_animation_progress + self.menu_animation_speed)
+        
         # Create buttons if not exists or window resized
         if not self.menu_buttons:
             self.create_menu_buttons()
+            self.menu_animation_progress = 0.0  # Reset animation on menu change
         
-        # Draw title with glow effect
+        # Draw title with glow effect and slide-in
         title = self.font_big.render(self.t("title"), True, COLOR_ACCENT)
         title_x = self.width // 2 - title.get_width() // 2
-        title_y = 60
+        title_y = int(60 + (100 - 60) * (1 - self.menu_animation_progress))  # Slide from top
         
         # Title glow
         glow_surf = pygame.Surface((title.get_width() + 40, title.get_height() + 40), pygame.SRCALPHA)
@@ -557,8 +586,10 @@ class Game:
         
         self.screen.blit(title, (title_x, title_y))
         
-        # Draw stats section
+        # Draw stats section with slide-in
         stats_bg = pygame.Rect(self.width // 2 - 150, 120, 300, 40)
+        stats_y = int(120 + (150 - 120) * (1 - self.menu_animation_progress))  # Slide from top
+        stats_bg.y = stats_y
         pygame.draw.rect(self.screen, COLOR_WALL, stats_bg, border_radius=10)
         pygame.draw.rect(self.screen, COLOR_WALL_EDGE, stats_bg, 1, border_radius=10)
         
@@ -567,22 +598,38 @@ class Game:
         stats_surf = font_small.render(stats_text, True, COLOR_TEXT)
         self.screen.blit(stats_surf, (stats_bg.centerx - stats_surf.get_width() // 2, stats_bg.centery - stats_surf.get_height() // 2))
         
-        # Draw buttons
+        # Draw buttons with staggered slide-in animation
         mouse_pos = pygame.mouse.get_pos()
         self.hovered_button = -1
         
         for i, button in enumerate(self.menu_buttons):
-            is_hovered = button["rect"].collidepoint(mouse_pos)
+            # Calculate staggered animation delay
+            button_delay = i * 0.1
+            button_progress = max(0, min(1, (self.menu_animation_progress - button_delay) / 0.3))
+            
+            # Apply slide-in offset
+            original_y = button["rect"].y
+            slide_offset = int(100 * (1 - button_progress))
+            button["rect"].y = original_y + slide_offset
+            
+            is_hovered = button["rect"].collidepoint(mouse_pos) and button_progress >= 1
             is_selected = (i == self.selected_button)
             
             if is_hovered:
                 self.hovered_button = i
             
-            self.draw_button(button, is_hovered, is_selected)
+            # Only draw if animation has started
+            if button_progress > 0:
+                self.draw_button(button, is_hovered, is_selected, button_progress)
+            
+            # Reset rect position
+            button["rect"].y = original_y
         
-        # Draw instructions at bottom
+        # Draw instructions at bottom with fade-in
         instructions = self.t("menu_move") + " | " + self.t("menu_find_exit")
         inst_surf = font_small.render(instructions, True, COLOR_TEXT_DIM)
+        inst_alpha = int(255 * self.menu_animation_progress)
+        inst_surf.set_alpha(inst_alpha)
         self.screen.blit(inst_surf, (self.width // 2 - inst_surf.get_width() // 2, self.height - 40))
 
     def draw(self):
