@@ -71,6 +71,9 @@ class Game:
         self.high_contrast_mode = False
         self.tab_navigation = False
         
+        # Input mode setting: hybrid, keyboard, mouse
+        self.input_mode = "hybrid"
+        
         # Apply theme
         self.apply_theme()
         
@@ -301,8 +304,8 @@ class Game:
         if self.state != STATE_PLAYING:
             return
         
-        # Handle mouse movement
-        if self.mouse_target:
+        # Handle mouse movement (only if input mode allows)
+        if self.input_mode in ["hybrid", "mouse"] and self.mouse_target:
             target_x, target_y = self.mouse_target
             dx = target_x - self.player_pixel_pos[0]
             dy = target_y - self.player_pixel_pos[1]
@@ -620,6 +623,12 @@ class Game:
                 self.player_color = colors[0]
             COLOR_PLAYER = self.player_color
             self.menu_buttons = []  # Recreate buttons with updated text
+        elif action == "input_mode":
+            # Cycle through input modes: hybrid -> keyboard -> mouse -> hybrid
+            modes = ["hybrid", "keyboard", "mouse"]
+            current_index = modes.index(self.input_mode)
+            self.input_mode = modes[(current_index + 1) % len(modes)]
+            self.menu_buttons = []  # Recreate buttons with updated text
         elif action == "about":
             self.menu_state = "about"
             self.selected_button = 0
@@ -665,6 +674,7 @@ class Game:
             buttons = [
                 {"text": f"Theme: {self.theme_mode.capitalize()}", "action": "theme", "icon": "◐"},
                 {"text": f"Language: {'English' if self.language == 'en' else 'Persian'}", "action": "lang", "icon": "🌐"},
+                {"text": f"Input: {self.input_mode.capitalize()}", "action": "input_mode", "icon": "⌨"},
                 {"text": f"Move Speed: {self.move_speed_setting}", "action": "speed_up", "icon": "⬆"},
                 {"text": f"Mouse Sens: {self.mouse_sensitivity}", "action": "sens_up", "icon": "⬆"},
                 {"text": f"High Contrast: {'On' if self.high_contrast_mode else 'Off'}", "action": "contrast", "icon": "◑"},
@@ -957,12 +967,13 @@ class Game:
                                     self.selected_button = button["index"]
                                     break
                         elif self.state == STATE_PLAYING:
-                            # Handle mouse click for movement
-                            mouse_x, mouse_y = pygame.mouse.get_pos()
-                            # Convert to game coordinates (minus HUD)
-                            game_y = mouse_y - self.hud_height
-                            if game_y > 0:
-                                self.mouse_target = (mouse_x, game_y)
+                            # Handle mouse click for movement (only if input mode allows)
+                            if self.input_mode in ["hybrid", "mouse"]:
+                                mouse_x, mouse_y = pygame.mouse.get_pos()
+                                # Convert to game coordinates (minus HUD)
+                                game_y = mouse_y - self.hud_height
+                                if game_y > 0:
+                                    self.mouse_target = (mouse_x, game_y)
 
                 elif event.type == pygame.VIDEORESIZE:
                     # Handle window resize
