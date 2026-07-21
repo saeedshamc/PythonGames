@@ -74,6 +74,12 @@ class Game:
         # Mouse movement variables
         self.mouse_target = None
         self.mouse_speed = 3
+        
+        # Menu system
+        self.menu_state = "main"  # main, settings, about
+        self.menu_buttons = []
+        self.selected_button = 0
+        self.hovered_button = -1
 
         self.state = STATE_MENU
         self.level_num = 1
@@ -409,31 +415,171 @@ class Game:
         ranked_above = sum(1 for entry in leaderboard if entry["level"] > player_score)
         return ranked_above + 1
 
+    def handle_menu_action(self, action):
+        """Handle menu button actions"""
+        if action == "play":
+            # Load from saved level or start fresh
+            saved_data = self.save_manager.load_progress()
+            self.level_num = saved_data["current_level"]
+            self.best_times = saved_data["best_times"]
+            self.total_play_time = saved_data["total_play_time"]
+            self.load_level(self.level_num)
+            self.menu_buttons = []  # Clear buttons for next menu
+        elif action == "theme":
+            self.toggle_theme()
+            self.menu_buttons = []  # Recreate buttons with updated text
+        elif action == "lang":
+            self.toggle_language()
+            self.menu_buttons = []  # Recreate buttons with updated text
+        elif action == "clear":
+            # Clear progress and restart
+            self.save_manager.clear_progress()
+            self.level_num = 1
+            self.best_times = {}
+            self.total_play_time = 0
+            self.menu_buttons = []
+        elif action == "quit":
+            pygame.quit()
+            sys.exit()
+        elif action == "back":
+            self.menu_state = "main"
+            self.selected_button = 0
+            self.menu_buttons = []
+    
+    def create_menu_buttons(self):
+        """Create button definitions for current menu state"""
+        self.menu_buttons = []
+        button_width = 280
+        button_height = 50
+        center_x = self.width // 2
+        start_y = 180
+        spacing = 60
+        
+        if self.menu_state == "main":
+            buttons = [
+                {"text": self.t("press_enter"), "action": "play", "icon": "▶"},
+                {"text": self.t("toggle_theme"), "action": "theme", "icon": "◐"},
+                {"text": self.t("toggle_lang"), "action": "lang", "icon": "🌐"},
+                {"text": self.t("press_clear"), "action": "clear", "icon": "✖"},
+                {"text": self.t("press_quit"), "action": "quit", "icon": "✕"},
+            ]
+        elif self.menu_state == "settings":
+            buttons = [
+                {"text": self.t("toggle_theme"), "action": "theme", "icon": "◐"},
+                {"text": self.t("toggle_lang"), "action": "lang", "icon": "🌐"},
+                {"text": "Back", "action": "back", "icon": "◀"},
+            ]
+        elif self.menu_state == "about":
+            buttons = [
+                {"text": "Back", "action": "back", "icon": "◀"},
+            ]
+        
+        for i, btn in enumerate(buttons):
+            rect = pygame.Rect(
+                center_x - button_width // 2,
+                start_y + i * spacing,
+                button_width,
+                button_height
+            )
+            self.menu_buttons.append({
+                "rect": rect,
+                "text": btn["text"],
+                "action": btn["action"],
+                "icon": btn["icon"],
+                "index": i
+            })
+    
+    def draw_button(self, button, is_hovered, is_selected):
+        """Draw a single menu button with effects"""
+        rect = button["rect"]
+        
+        # Determine colors based on state
+        if is_selected:
+            bg_color = COLOR_ACCENT
+            text_color = (255, 255, 255)
+            glow_intensity = 15
+        elif is_hovered:
+            bg_color = tuple(min(c + 30, 255) for c in COLOR_WALL)
+            text_color = COLOR_TEXT
+            glow_intensity = 8
+        else:
+            bg_color = COLOR_WALL
+            text_color = COLOR_TEXT_DIM
+            glow_intensity = 0
+        
+        # Draw button background with rounded corners
+        pygame.draw.rect(self.screen, bg_color, rect, border_radius=12)
+        
+        # Draw glow effect if selected or hovered
+        if glow_intensity > 0:
+            glow_surf = pygame.Surface((rect.width + 20, rect.height + 20), pygame.SRCALPHA)
+            pygame.draw.rect(glow_surf, (*COLOR_ACCENT, glow_intensity), 
+                           (10, 10, rect.width, rect.height), border_radius=15)
+            self.screen.blit(glow_surf, (rect.x - 10, rect.y - 10))
+        
+        # Draw border
+        border_color = COLOR_ACCENT if is_selected else COLOR_WALL_EDGE
+        pygame.draw.rect(self.screen, border_color, rect, 2, border_radius=12)
+        
+        # Draw icon
+        font = self.persian_font if self.language == "fa" else self.font_medium
+        icon_surf = font.render(button["icon"], True, text_color)
+        icon_x = rect.x + 20
+        icon_y = rect.centery - icon_surf.get_height() // 2
+        self.screen.blit(icon_surf, (icon_x, icon_y))
+        
+        # Draw text
+        text_surf = font.render(button["text"], True, text_color)
+        text_x = rect.centerx - text_surf.get_width() // 2
+        text_y = rect.centery - text_surf.get_height() // 2
+        self.screen.blit(text_surf, (text_x, text_y))
+    
     def draw_menu(self):
         self.screen.fill(COLOR_BG)
+        
+        # Create buttons if not exists or window resized
+        if not self.menu_buttons:
+            self.create_menu_buttons()
+        
+        # Draw title with glow effect
         title = self.font_big.render(self.t("title"), True, COLOR_ACCENT)
-        self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 80))
-
-        lines = [
-            self.t("menu_move"),
-            self.t("menu_find_exit"),
-            "",
-            f"{self.t('current_level')}: {self.level_num}",
-            f"{self.t('total_play_time')}: {self.total_play_time:.1f}s",
-            f"{self.t('levels_completed')}: {len([t for t in self.best_times.values() if t > 0])}",
-            "",
-            self.t("press_enter"),
-            self.t("press_clear"),
-            self.t("press_quit"),
-            self.t("toggle_theme"),
-            self.t("toggle_lang"),
-        ]
-        y = 200
-        for line in lines:
-            font = self.persian_font if self.language == "fa" else self.font_small
-            surf = font.render(line, True, COLOR_TEXT)
-            self.screen.blit(surf, (self.width // 2 - surf.get_width() // 2, y))
-            y += 32
+        title_x = self.width // 2 - title.get_width() // 2
+        title_y = 60
+        
+        # Title glow
+        glow_surf = pygame.Surface((title.get_width() + 40, title.get_height() + 40), pygame.SRCALPHA)
+        pygame.draw.rect(glow_surf, (*COLOR_ACCENT, 20), (20, 20, title.get_width(), title.get_height()), border_radius=20)
+        self.screen.blit(glow_surf, (title_x - 20, title_y - 20))
+        
+        self.screen.blit(title, (title_x, title_y))
+        
+        # Draw stats section
+        stats_bg = pygame.Rect(self.width // 2 - 150, 120, 300, 40)
+        pygame.draw.rect(self.screen, COLOR_WALL, stats_bg, border_radius=10)
+        pygame.draw.rect(self.screen, COLOR_WALL_EDGE, stats_bg, 1, border_radius=10)
+        
+        stats_text = f"{self.t('level')} {self.level_num} | {self.t('levels_completed')}: {len([t for t in self.best_times.values() if t > 0])}"
+        font_small = self.persian_font if self.language == "fa" else self.font_small
+        stats_surf = font_small.render(stats_text, True, COLOR_TEXT)
+        self.screen.blit(stats_surf, (stats_bg.centerx - stats_surf.get_width() // 2, stats_bg.centery - stats_surf.get_height() // 2))
+        
+        # Draw buttons
+        mouse_pos = pygame.mouse.get_pos()
+        self.hovered_button = -1
+        
+        for i, button in enumerate(self.menu_buttons):
+            is_hovered = button["rect"].collidepoint(mouse_pos)
+            is_selected = (i == self.selected_button)
+            
+            if is_hovered:
+                self.hovered_button = i
+            
+            self.draw_button(button, is_hovered, is_selected)
+        
+        # Draw instructions at bottom
+        instructions = self.t("menu_move") + " | " + self.t("menu_find_exit")
+        inst_surf = font_small.render(instructions, True, COLOR_TEXT_DIM)
+        self.screen.blit(inst_surf, (self.width // 2 - inst_surf.get_width() // 2, self.height - 40))
 
     def draw(self):
         if self.state == STATE_MENU:
@@ -474,35 +620,27 @@ class Game:
                         running = False
 
                     elif self.state == STATE_MENU:
-                        if event.key == pygame.K_RETURN:
-                            # Load from saved level or start fresh
-                            saved_data = self.save_manager.load_progress()
-                            self.level_num = saved_data["current_level"]
-                            self.best_times = saved_data["best_times"]
-                            self.total_play_time = saved_data["total_play_time"]
-                            self.load_level(self.level_num)
-                        elif event.key == pygame.K_c:
-                            # Clear progress and restart
-                            self.save_manager.clear_progress()
-                            self.level_num = 1
-                            self.best_times = {}
-                            self.total_play_time = 0
-                        elif event.key == pygame.K_t:
-                            self.toggle_theme()
-                        elif event.key == pygame.K_l:
-                            self.toggle_language()
+                        # Keyboard navigation
+                        if event.key == pygame.K_UP:
+                            self.selected_button = (self.selected_button - 1) % len(self.menu_buttons)
+                        elif event.key == pygame.K_DOWN:
+                            self.selected_button = (self.selected_button + 1) % len(self.menu_buttons)
+                        elif event.key == pygame.K_RETURN:
+                            if self.menu_buttons:
+                                self.handle_menu_action(self.menu_buttons[self.selected_button]["action"])
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:  # Left click
+                        if self.state == STATE_MENU:
+                            mouse_pos = pygame.mouse.get_pos()
+                            for button in self.menu_buttons:
+                                if button["rect"].collidepoint(mouse_pos):
+                                    self.handle_menu_action(button["action"])
+                                    self.selected_button = button["index"]
+                                    break
 
                     elif self.state == STATE_PLAYING:
                         if event.key == pygame.K_q:
                             self.state = STATE_MENU
-                        elif event.type == pygame.MOUSEBUTTONDOWN:
-                            # Handle mouse click for movement
-                            if event.button == 1:  # Left click
-                                mouse_x, mouse_y = pygame.mouse.get_pos()
-                                # Convert to game coordinates (minus HUD)
-                                game_y = mouse_y - self.hud_height
-                                if game_y > 0:
-                                    self.mouse_target = (mouse_x, game_y)
                         else:
                             keys = pygame.key.get_pressed()
                             dx, dy = 0, 0
@@ -515,10 +653,6 @@ class Game:
                             if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
                                 dx = 1
                             self.try_move(dx, dy)
-                    elif event.type == pygame.VIDEORESIZE:
-                        # Handle window resize
-                        self.width, self.height = event.w, event.h
-                        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
 
                     elif self.state == STATE_WIN:
                         if event.key == pygame.K_RETURN:
@@ -527,6 +661,27 @@ class Game:
                             self.load_level(self.level_num)
                         elif event.key == pygame.K_q:
                             self.state = STATE_MENU
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:  # Left click
+                        if self.state == STATE_MENU:
+                            mouse_pos = pygame.mouse.get_pos()
+                            for button in self.menu_buttons:
+                                if button["rect"].collidepoint(mouse_pos):
+                                    self.handle_menu_action(button["action"])
+                                    self.selected_button = button["index"]
+                                    break
+                        elif self.state == STATE_PLAYING:
+                            # Handle mouse click for movement
+                            mouse_x, mouse_y = pygame.mouse.get_pos()
+                            # Convert to game coordinates (minus HUD)
+                            game_y = mouse_y - self.hud_height
+                            if game_y > 0:
+                                self.mouse_target = (mouse_x, game_y)
+                elif event.type == pygame.VIDEORESIZE:
+                    # Handle window resize
+                    self.width, self.height = event.w, event.h
+                    self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE | pygame.DOUBLEBUF)
+                    self.menu_buttons = []  # Recreate buttons on resize
 
 
             self.update()
