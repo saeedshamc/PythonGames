@@ -26,12 +26,39 @@ class Game:
         pygame.init()
         self.sound = SoundManager()
 
-        # Load saved progress first to determine initial level
+        # Initialize save manager first
         self.save_manager = SaveManager()
-        saved_data = self.save_manager.load_progress()
-        self.level_num = saved_data["current_level"]
-        self.best_times = saved_data["best_times"]
-        self.total_play_time = saved_data["total_play_time"]
+
+        # Set default values
+        self.level_num = 1
+        self.best_times = {}
+        self.total_play_time = 0
+        
+        # Load saved progress
+        try:
+            saved_data = self.save_manager.load_progress()
+            self.level_num = saved_data["current_level"]
+            self.best_times = saved_data["best_times"]
+            self.total_play_time = saved_data["total_play_time"]
+        except:
+            # If loading fails, use defaults
+            pass
+        
+        # Theme and language settings
+        self.dark_mode = True
+        self.language = "en"  # "en" or "fa"
+        
+        # Load theme/language from save
+        try:
+            settings = self.save_manager.load_settings()
+            if settings:
+                self.dark_mode = settings.get("dark_mode", True)
+                self.language = settings.get("language", "en")
+        except:
+            pass
+        
+        # Apply theme
+        self.apply_theme()
         
         # Set HUD height first
         self.hud_height = HUD_HEIGHT
@@ -82,7 +109,6 @@ class Game:
         self.hovered_button = -1
 
         self.state = STATE_MENU
-        self.level_num = 1
         self.grid = None
         self.player = (1, 1)
         self.goal = (1, 1)
@@ -96,18 +122,6 @@ class Game:
         self.player_pixel_pos = [self.cell_size // 2, self.cell_size // 2]
         self.player_velocity = [0, 0]
         self.move_speed = 4  # pixels per frame
-        
-        # Theme and language settings
-        self.dark_mode = True
-        self.language = "en"  # "en" or "fa"
-        
-        # Load theme/language from save
-        settings = self.save_manager.load_settings()
-        if settings:
-            self.dark_mode = settings.get("dark_mode", True)
-            self.language = settings.get("language", "en")
-        
-        self.apply_theme()
 
     def load_level(self, level_num):
         self.level_num = level_num
@@ -195,17 +209,7 @@ class Game:
     
     def t(self, key):
         """Get translated text"""
-        text = get_text(key, self.language)
-        # Handle RTL for Persian text
-        if self.language == "fa":
-            text = self.rtl_text(text)
-        return text
-    
-    def rtl_text(self, text):
-        """Reverse text for RTL languages like Persian"""
-        # Simple reversal - for proper RTL, you'd need a library like arabic-reshaper
-        # This is a basic implementation for Pygame
-        return text[::-1]
+        return get_text(key, self.language)
     
     def try_move(self, dx, dy):
         # Set velocity based on input
@@ -617,42 +621,26 @@ class Game:
                     running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        running = False
+                        if self.state == STATE_PLAYING:
+                            self.state = STATE_MENU
+                        else:
+                            running = False
 
                     elif self.state == STATE_MENU:
                         # Keyboard navigation
                         if event.key == pygame.K_UP:
-                            self.selected_button = (self.selected_button - 1) % len(self.menu_buttons)
+                            if self.menu_buttons:
+                                self.selected_button = (self.selected_button - 1) % len(self.menu_buttons)
                         elif event.key == pygame.K_DOWN:
-                            self.selected_button = (self.selected_button + 1) % len(self.menu_buttons)
+                            if self.menu_buttons:
+                                self.selected_button = (self.selected_button + 1) % len(self.menu_buttons)
                         elif event.key == pygame.K_RETURN:
                             if self.menu_buttons:
                                 self.handle_menu_action(self.menu_buttons[self.selected_button]["action"])
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left click
-                        if self.state == STATE_MENU:
-                            mouse_pos = pygame.mouse.get_pos()
-                            for button in self.menu_buttons:
-                                if button["rect"].collidepoint(mouse_pos):
-                                    self.handle_menu_action(button["action"])
-                                    self.selected_button = button["index"]
-                                    break
 
                     elif self.state == STATE_PLAYING:
                         if event.key == pygame.K_q:
                             self.state = STATE_MENU
-                        else:
-                            keys = pygame.key.get_pressed()
-                            dx, dy = 0, 0
-                            if keys[pygame.K_UP] or keys[pygame.K_w]:
-                                dy = -1
-                            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                                dy = 1
-                            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                                dx = -1
-                            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                                dx = 1
-                            self.try_move(dx, dy)
 
                     elif self.state == STATE_WIN:
                         if event.key == pygame.K_RETURN:
@@ -661,6 +649,7 @@ class Game:
                             self.load_level(self.level_num)
                         elif event.key == pygame.K_q:
                             self.state = STATE_MENU
+
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if event.button == 1:  # Left click
                         if self.state == STATE_MENU:
@@ -677,6 +666,7 @@ class Game:
                             game_y = mouse_y - self.hud_height
                             if game_y > 0:
                                 self.mouse_target = (mouse_x, game_y)
+
                 elif event.type == pygame.VIDEORESIZE:
                     # Handle window resize
                     self.width, self.height = event.w, event.h
