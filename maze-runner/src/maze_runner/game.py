@@ -124,6 +124,9 @@ class Game:
         # Accessibility variables
         self.high_contrast_mode = False
         self.tab_navigation = False
+        
+        # Menu sound variables
+        self.last_hovered_button = -1
 
         self.state = STATE_MENU
         self.grid = None
@@ -788,6 +791,10 @@ class Game:
             
             if is_hovered:
                 self.hovered_button = i
+                # Play hover sound if this is a new hover
+                if self.hovered_button != self.last_hovered_button and button_progress >= 1:
+                    self.sound.play("hover")
+                    self.last_hovered_button = i
             
             # Only draw if animation has started
             if button_progress > 0:
@@ -852,15 +859,19 @@ class Game:
                         if event.key == pygame.K_UP:
                             if self.menu_buttons:
                                 self.selected_button = (self.selected_button - 1) % len(self.menu_buttons)
+                                self.sound.play("hover")
                         elif event.key == pygame.K_DOWN:
                             if self.menu_buttons:
                                 self.selected_button = (self.selected_button + 1) % len(self.menu_buttons)
+                                self.sound.play("hover")
                         elif event.key == pygame.K_RETURN:
                             if self.menu_buttons:
+                                self.sound.play("select")
                                 self.handle_menu_action(self.menu_buttons[self.selected_button]["action"])
                         elif event.key == pygame.K_TAB and self.tab_navigation:
                             if self.menu_buttons:
                                 self.selected_button = (self.selected_button + 1) % len(self.menu_buttons)
+                                self.sound.play("hover")
 
                     elif self.state == STATE_PLAYING:
                         if event.key == pygame.K_q:
@@ -880,6 +891,7 @@ class Game:
                             mouse_pos = pygame.mouse.get_pos()
                             for button in self.menu_buttons:
                                 if button["rect"].collidepoint(mouse_pos):
+                                    self.sound.play("select")
                                     self.handle_menu_action(button["action"])
                                     self.selected_button = button["index"]
                                     break

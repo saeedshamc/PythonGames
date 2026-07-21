@@ -41,6 +41,9 @@ class SoundManager:
             self.sounds["win"] = self._make_tone(660, 300, volume=0.35)
             self.sounds["caught"] = self._make_tone(90, 400, volume=0.35)
             self.sounds["step_enemy"] = self._make_tone(300, 30, volume=0.08)
+            # Menu sounds
+            self.sounds["hover"] = self._make_tone(440, 50, volume=0.1)
+            self.sounds["select"] = self._make_tone(880, 100, volume=0.2)
         except Exception:
             self.enabled = False
 
