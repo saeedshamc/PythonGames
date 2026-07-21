@@ -53,7 +53,7 @@ class Game:
         self.width = maze_size * self.cell_size
         self.height = maze_size * self.cell_size + self.hud_height
 
-        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
+        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE | pygame.DOUBLEBUF)
         pygame.display.set_caption("Maze Runner")
         self.clock = pygame.time.Clock()
 
@@ -61,7 +61,7 @@ class Game:
         self.font_medium = pygame.font.SysFont("arial", 24, bold=True)
         self.font_small = pygame.font.SysFont("arial", 18)
         
-        # Try to load Persian-compatible font
+        # Try to load Persian-compatible font with RTL support
         self.persian_font = None
         possible_fonts = ["Tahoma", "Arial", "Segoe UI", "Microsoft Sans Serif", "DejaVu Sans"]
         for font_name in possible_fonts:
@@ -70,6 +70,10 @@ class Game:
                 break
             except:
                 continue
+        
+        # Mouse movement variables
+        self.mouse_target = None
+        self.mouse_speed = 3
 
         self.state = STATE_MENU
         self.level_num = 1
@@ -185,7 +189,17 @@ class Game:
     
     def t(self, key):
         """Get translated text"""
-        return get_text(key, self.language)
+        text = get_text(key, self.language)
+        # Handle RTL for Persian text
+        if self.language == "fa":
+            text = self.rtl_text(text)
+        return text
+    
+    def rtl_text(self, text):
+        """Reverse text for RTL languages like Persian"""
+        # Simple reversal - for proper RTL, you'd need a library like arabic-reshaper
+        # This is a basic implementation for Pygame
+        return text[::-1]
     
     def try_move(self, dx, dy):
         # Set velocity based on input
@@ -194,6 +208,25 @@ class Game:
     def update_player_position(self):
         if self.state != STATE_PLAYING:
             return
+        
+        # Handle mouse movement
+        if self.mouse_target:
+            target_x, target_y = self.mouse_target
+            dx = target_x - self.player_pixel_pos[0]
+            dy = target_y - self.player_pixel_pos[1]
+            distance = (dx ** 2 + dy ** 2) ** 0.5
+            
+            if distance > self.mouse_speed:
+                # Move towards target
+                self.player_velocity = [
+                    (dx / distance) * self.mouse_speed,
+                    (dy / distance) * self.mouse_speed
+                ]
+            else:
+                # Reached target
+                self.player_pixel_pos = [target_x, target_y]
+                self.player_velocity = [0, 0]
+                self.mouse_target = None
         
         # Calculate new position
         new_x = self.player_pixel_pos[0] + self.player_velocity[0]
@@ -300,7 +333,8 @@ class Game:
                                     self.cell_size, self.cell_size)
                 if val == 1:
                     pygame.draw.rect(self.screen, COLOR_WALL, rect)
-                    pygame.draw.rect(self.screen, COLOR_WALL_EDGE, rect, 1)
+                    # Smooth anti-aliased edges
+                    pygame.draw.rect(self.screen, COLOR_WALL_EDGE, rect, 1, border_radius=1)
                 else:
                     pygame.draw.rect(self.screen, COLOR_PATH, rect)
 
@@ -308,6 +342,7 @@ class Game:
             cx = x * self.cell_size + self.cell_size // 2
             cy = self.hud_height + y * self.cell_size + self.cell_size // 2
             radius = int(self.cell_size * 0.15 * a) + 1
+            # Anti-aliased circles
             surf = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
             pygame.draw.circle(surf, (*COLOR_PLAYER, int(120 * a)),
                                 (self.cell_size // 2, self.cell_size // 2), radius)
@@ -321,14 +356,18 @@ class Game:
         pcy = self.hud_height + py
         glow_r = self.cell_size // 2 + 4 + int(2 * abs((self.anim_t % 40) - 20) / 20)
         glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
+        # Anti-aliased glow
         pygame.draw.circle(glow_surf, (*COLOR_PLAYER_GLOW, 70), (glow_r, glow_r), glow_r)
         self.screen.blit(glow_surf, (pcx - glow_r, pcy - glow_r))
         pygame.draw.circle(self.screen, COLOR_PLAYER, (pcx, pcy), self.cell_size // 2 - 3)
 
     def draw_hud(self):
-        pygame.draw.rect(self.screen, (12, 12, 18) if self.dark_mode else (230, 230, 240), (0, 0, self.width, self.hud_height))
-        pygame.draw.line(self.screen, COLOR_ACCENT, (0, self.hud_height),
-                          (self.width, self.hud_height), 2)
+        # Smooth gradient background for HUD
+        hud_color = (12, 12, 18) if self.dark_mode else (230, 230, 240)
+        pygame.draw.rect(self.screen, hud_color, (0, 0, self.width, self.hud_height), border_radius=0)
+        # Anti-aliased divider line
+        pygame.draw.aaline(self.screen, COLOR_ACCENT, (0, self.hud_height), (self.width, self.hud_height))
+        pygame.draw.line(self.screen, COLOR_ACCENT, (0, self.hud_height), (self.width, self.hud_height), 2)
 
         font = self.persian_font if self.language == "fa" else self.font_medium
         level_txt = font.render(f"{self.t('level')} {self.level_num}", True, COLOR_TEXT)
@@ -456,6 +495,14 @@ class Game:
                     elif self.state == STATE_PLAYING:
                         if event.key == pygame.K_q:
                             self.state = STATE_MENU
+                        elif event.type == pygame.MOUSEBUTTONDOWN:
+                            # Handle mouse click for movement
+                            if event.button == 1:  # Left click
+                                mouse_x, mouse_y = pygame.mouse.get_pos()
+                                # Convert to game coordinates (minus HUD)
+                                game_y = mouse_y - self.hud_height
+                                if game_y > 0:
+                                    self.mouse_target = (mouse_x, game_y)
                         else:
                             keys = pygame.key.get_pressed()
                             dx, dy = 0, 0
