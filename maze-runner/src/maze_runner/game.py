@@ -137,6 +137,10 @@ class Game:
         
         # Menu sound variables
         self.last_hovered_button = -1
+        
+        # User customization variables
+        self.player_name = "Player"
+        self.player_color = COLOR_PLAYER
 
         self.state = STATE_MENU
         self.grid = None
@@ -606,6 +610,16 @@ class Game:
         elif action == "tabnav":
             self.tab_navigation = not self.tab_navigation
             self.menu_buttons = []  # Recreate buttons with updated text
+        elif action == "pcolor":
+            # Cycle through player colors
+            colors = [COLOR_PLAYER, (255, 100, 100), (100, 255, 100), (100, 100, 255), (255, 255, 100), (255, 100, 255), (100, 255, 255)]
+            try:
+                current_index = colors.index(self.player_color)
+                self.player_color = colors[(current_index + 1) % len(colors)]
+            except ValueError:
+                self.player_color = colors[0]
+            COLOR_PLAYER = self.player_color
+            self.menu_buttons = []  # Recreate buttons with updated text
         elif action == "about":
             self.menu_state = "about"
             self.selected_button = 0
@@ -655,6 +669,7 @@ class Game:
                 {"text": f"Mouse Sens: {self.mouse_sensitivity}", "action": "sens_up", "icon": "⬆"},
                 {"text": f"High Contrast: {'On' if self.high_contrast_mode else 'Off'}", "action": "contrast", "icon": "◑"},
                 {"text": f"Tab Nav: {'On' if self.tab_navigation else 'Off'}", "action": "tabnav", "icon": "⇥"},
+                {"text": f"Player Color", "action": "pcolor", "icon": "🎨"},
                 {"text": "Back", "action": "back", "icon": "◀"},
             ]
         elif self.menu_state == "about":
