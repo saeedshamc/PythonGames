@@ -53,6 +53,11 @@ class Game:
         self.elapsed = 0
         self.trail = []
         self.anim_t = 0.0
+        
+        # Smooth movement variables
+        self.player_pixel_pos = [CELL_SIZE // 2, CELL_SIZE // 2]
+        self.player_velocity = [0, 0]
+        self.move_speed = 4  # pixels per frame
 
     def load_level(self, level_num):
         self.level_num = level_num
@@ -84,24 +89,91 @@ class Game:
         self.width = maze_size * CELL_SIZE
         self.height = maze_size * CELL_SIZE + self.hud_height
         self.screen = pygame.display.set_mode((self.width, self.height))
+        
+        # Reset player pixel position to center of starting cell
+        self.player_pixel_pos = [
+            self.player[0] * CELL_SIZE + CELL_SIZE // 2,
+            self.player[1] * CELL_SIZE + CELL_SIZE // 2
+        ]
+        self.player_velocity = [0, 0]
 
         self.start_ticks = pygame.time.get_ticks()
         self.state = STATE_PLAYING
 
     def try_move(self, dx, dy):
-        x, y = self.player
-        nx, ny = x + dx, y + dy
-        h = len(self.grid)
-        w = len(self.grid[0])
-        if 0 <= nx < w and 0 <= ny < h and self.grid[ny][nx] == 0:
-            self.trail.append((x, y, 1.0))
-            self.player = (nx, ny)
-            self.move_count += 1
-            self.sound.play("move")
-            if self.player == self.goal:
-                self.on_win()
-        else:
-            self.sound.play("wall")
+        # Set velocity based on input
+        self.player_velocity = [dx * self.move_speed, dy * self.move_speed]
+    
+    def update_player_position(self):
+        if self.state != STATE_PLAYING:
+            return
+        
+        # Calculate new position
+        new_x = self.player_pixel_pos[0] + self.player_velocity[0]
+        new_y = self.player_pixel_pos[1] + self.player_velocity[1]
+        
+        # Collision detection with walls
+        player_radius = CELL_SIZE // 2 - 3
+        
+        # Check horizontal movement
+        if self.player_velocity[0] != 0:
+            # Check left and right edges of player
+            left_edge = new_x - player_radius
+            right_edge = new_x + player_radius
+            
+            # Convert to grid coordinates
+            left_cell = int(left_edge // CELL_SIZE)
+            right_cell = int(right_edge // CELL_SIZE)
+            current_cell_y = int(self.player_pixel_pos[1] // CELL_SIZE)
+            
+            can_move = True
+            if left_cell >= 0 and self.grid[current_cell_y][left_cell] == 1:
+                can_move = False
+                new_x = (left_cell + 1) * CELL_SIZE + player_radius
+            if right_cell < len(self.grid[0]) and self.grid[current_cell_y][right_cell] == 1:
+                can_move = False
+                new_x = right_cell * CELL_SIZE - player_radius - 1
+            
+            if can_move:
+                self.player_pixel_pos[0] = new_x
+            else:
+                self.player_pixel_pos[0] = new_x
+        
+        # Check vertical movement
+        if self.player_velocity[1] != 0:
+            top_edge = new_y - player_radius
+            bottom_edge = new_y + player_radius
+            
+            top_cell = int(top_edge // CELL_SIZE)
+            bottom_cell = int(bottom_edge // CELL_SIZE)
+            current_cell_x = int(self.player_pixel_pos[0] // CELL_SIZE)
+            
+            can_move = True
+            if top_cell >= 0 and self.grid[top_cell][current_cell_x] == 1:
+                can_move = False
+                new_y = (top_cell + 1) * CELL_SIZE + player_radius
+            if bottom_cell < len(self.grid) and self.grid[bottom_cell][current_cell_x] == 1:
+                can_move = False
+                new_y = bottom_cell * CELL_SIZE - player_radius - 1
+            
+            if can_move:
+                self.player_pixel_pos[1] = new_y
+            else:
+                self.player_pixel_pos[1] = new_y
+        
+        # Update grid position for game logic
+        self.player = (
+            int(self.player_pixel_pos[0] // CELL_SIZE),
+            int(self.player_pixel_pos[1] // CELL_SIZE)
+        )
+        
+        # Check if reached goal
+        if self.player == self.goal:
+            self.on_win()
+        
+        # Add trail occasionally
+        if int(self.anim_t) % 10 == 0:
+            self.trail.append((self.player[0], self.player[1], 1.0))
 
     def on_win(self):
         self.sound.play("win")
@@ -123,6 +195,14 @@ class Game:
 
         now = pygame.time.get_ticks()
         self.elapsed = (now - self.start_ticks) / 1000.0
+        
+        # Update smooth player movement
+        self.update_player_position()
+        
+        # Count moves based on position changes
+        if int(self.anim_t) % 30 == 0 and (self.player_velocity[0] != 0 or self.player_velocity[1] != 0):
+            self.move_count += 1
+            self.sound.play("move")
 
         self.trail = [(x, y, a - 0.03) for (x, y, a) in self.trail if a - 0.03 > 0]
 
@@ -149,9 +229,9 @@ class Game:
         # Goal is hidden - no visual indicator
         # Player must find the exit by exploring
 
-        px, py = self.player
-        pcx = px * CELL_SIZE + CELL_SIZE // 2
-        pcy = self.hud_height + py * CELL_SIZE + CELL_SIZE // 2
+        px, py = self.player_pixel_pos
+        pcx = px
+        pcy = self.hud_height + py
         glow_r = CELL_SIZE // 2 + 4 + int(2 * abs((self.anim_t % 40) - 20) / 20)
         glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
         pygame.draw.circle(glow_surf, (*COLOR_PLAYER_GLOW, 70), (glow_r, glow_r), glow_r)
@@ -217,6 +297,7 @@ class Game:
             "Press ENTER to continue",
             "Press C to clear progress",
             "Press ESC to quit",
+            "Press Q to quit to menu",
         ]
         y = 200
         for line in lines:
@@ -236,7 +317,11 @@ class Game:
 
         if self.state == STATE_WIN:
             self.draw_center_message(
-                f"Level Complete! Time: {self.elapsed:.1f}s", "ENTER for next level   |   R to replay", COLOR_GOAL)
+                f"Level Complete! Time: {self.elapsed:.1f}s", "ENTER for next level   |   R to replay   |   Q to menu", COLOR_GOAL)
+        
+        # Draw quit button in corner
+        quit_btn = self.font_small.render("[Q] Menu  [ESC] Quit", True, COLOR_TEXT_DIM)
+        self.screen.blit(quit_btn, (10, self.height - 30))
 
         pygame.display.flip()
 
@@ -266,20 +351,28 @@ class Game:
                             self.total_play_time = 0
 
                     elif self.state == STATE_PLAYING:
-                        if event.key in (pygame.K_UP, pygame.K_w):
-                            self.try_move(0, -1)
-                        elif event.key in (pygame.K_DOWN, pygame.K_s):
-                            self.try_move(0, 1)
-                        elif event.key in (pygame.K_LEFT, pygame.K_a):
-                            self.try_move(-1, 0)
-                        elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                            self.try_move(1, 0)
+                        if event.key == pygame.K_q:
+                            self.state = STATE_MENU
+                        else:
+                            keys = pygame.key.get_pressed()
+                            dx, dy = 0, 0
+                            if keys[pygame.K_UP] or keys[pygame.K_w]:
+                                dy = -1
+                            if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+                                dy = 1
+                            if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+                                dx = -1
+                            if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+                                dx = 1
+                            self.try_move(dx, dy)
 
                     elif self.state == STATE_WIN:
                         if event.key == pygame.K_RETURN:
                             self.load_level(self.level_num + 1)
                         elif event.key == pygame.K_r:
                             self.load_level(self.level_num)
+                        elif event.key == pygame.K_q:
+                            self.state = STATE_MENU
 
 
             self.update()
