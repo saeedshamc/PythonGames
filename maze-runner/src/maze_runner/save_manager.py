@@ -105,3 +105,23 @@ class SaveManager:
             except (json.JSONDecodeError, IOError):
                 continue
         return sorted(levels, key=lambda x: x["level"])
+    
+    def save_settings(self, dark_mode, language):
+        settings_file = self.save_dir / "settings.json"
+        data = {
+            "dark_mode": dark_mode,
+            "language": language
+        }
+        with open(settings_file, 'w') as f:
+            json.dump(data, f, indent=2)
+    
+    def load_settings(self):
+        settings_file = self.save_dir / "settings.json"
+        if not settings_file.exists():
+            return None
+        
+        try:
+            with open(settings_file, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return None

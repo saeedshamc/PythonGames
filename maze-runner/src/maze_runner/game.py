@@ -7,11 +7,18 @@ from .config import (
     COLOR_BG, COLOR_WALL, COLOR_WALL_EDGE, COLOR_PATH,
     COLOR_PLAYER, COLOR_PLAYER_GLOW, COLOR_GOAL,
     COLOR_TEXT, COLOR_TEXT_DIM, COLOR_ACCENT,
+    COLOR_BG_DARK, COLOR_WALL_DARK, COLOR_WALL_EDGE_DARK, COLOR_PATH_DARK,
+    COLOR_PLAYER_DARK, COLOR_PLAYER_GLOW_DARK, COLOR_GOAL_DARK,
+    COLOR_TEXT_DARK, COLOR_TEXT_DIM_DARK, COLOR_ACCENT_DARK,
+    COLOR_BG_LIGHT, COLOR_WALL_LIGHT, COLOR_WALL_EDGE_LIGHT, COLOR_PATH_LIGHT,
+    COLOR_PLAYER_LIGHT, COLOR_PLAYER_GLOW_LIGHT, COLOR_GOAL_LIGHT,
+    COLOR_TEXT_LIGHT, COLOR_TEXT_DIM_LIGHT, COLOR_ACCENT_LIGHT,
     STATE_MENU, STATE_PLAYING, STATE_WIN,
 )
 from .maze import generate_solvable_maze
 from .audio import SoundManager
 from .save_manager import SaveManager
+from .localization import get_text
 
 
 class Game:
@@ -26,22 +33,43 @@ class Game:
         self.best_times = saved_data["best_times"]
         self.total_play_time = saved_data["total_play_time"]
         
-        # Calculate initial window size based on current level
+        # Set HUD height first
+        self.hud_height = HUD_HEIGHT
+        
+        # Get screen info for responsive sizing
+        self.screen_info = pygame.display.Info()
+        self.max_screen_width = self.screen_info.current_w - 100
+        self.max_screen_height = self.screen_info.current_h - 100
+        
+        # Calculate initial window size based on current level and screen
         base_size = 15
         size_increase = (self.level_num - 1) * 2
         maze_size = base_size + size_increase
         
-        self.hud_height = HUD_HEIGHT
-        self.width = maze_size * CELL_SIZE
-        self.height = maze_size * CELL_SIZE + self.hud_height
+        # Calculate responsive cell size
+        max_maze_pixels = min(self.max_screen_width, self.max_screen_height - self.hud_height)
+        self.cell_size = max(20, min(40, max_maze_pixels // maze_size))
+        
+        self.width = maze_size * self.cell_size
+        self.height = maze_size * self.cell_size + self.hud_height
 
-        self.screen = pygame.display.set_mode((self.width, self.height))
+        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
         pygame.display.set_caption("Maze Runner")
         self.clock = pygame.time.Clock()
 
         self.font_big = pygame.font.SysFont("arial", 42, bold=True)
         self.font_medium = pygame.font.SysFont("arial", 24, bold=True)
         self.font_small = pygame.font.SysFont("arial", 18)
+        
+        # Try to load Persian-compatible font
+        self.persian_font = None
+        possible_fonts = ["Tahoma", "Arial", "Segoe UI", "Microsoft Sans Serif", "DejaVu Sans"]
+        for font_name in possible_fonts:
+            try:
+                self.persian_font = pygame.font.SysFont(font_name, 24)
+                break
+            except:
+                continue
 
         self.state = STATE_MENU
         self.level_num = 1
@@ -55,9 +83,21 @@ class Game:
         self.anim_t = 0.0
         
         # Smooth movement variables
-        self.player_pixel_pos = [CELL_SIZE // 2, CELL_SIZE // 2]
+        self.player_pixel_pos = [self.cell_size // 2, self.cell_size // 2]
         self.player_velocity = [0, 0]
         self.move_speed = 4  # pixels per frame
+        
+        # Theme and language settings
+        self.dark_mode = True
+        self.language = "en"  # "en" or "fa"
+        
+        # Load theme/language from save
+        settings = self.save_manager.load_settings()
+        if settings:
+            self.dark_mode = settings.get("dark_mode", True)
+            self.language = settings.get("language", "en")
+        
+        self.apply_theme()
 
     def load_level(self, level_num):
         self.level_num = level_num
@@ -84,22 +124,69 @@ class Game:
             # Save this level's map for future replay
             self.save_manager.save_level_map(level_num, grid, start, goal)
         
-        # Resize window to fit current maze
+        # Resize window to fit current maze with responsive sizing
         maze_size = len(self.grid)
-        self.width = maze_size * CELL_SIZE
-        self.height = maze_size * CELL_SIZE + self.hud_height
-        self.screen = pygame.display.set_mode((self.width, self.height))
+        max_maze_pixels = min(self.max_screen_width, self.max_screen_height - self.hud_height)
+        self.cell_size = max(20, min(40, max_maze_pixels // maze_size))
+        
+        self.width = maze_size * self.cell_size
+        self.height = maze_size * self.cell_size + self.hud_height
+        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
         
         # Reset player pixel position to center of starting cell
         self.player_pixel_pos = [
-            self.player[0] * CELL_SIZE + CELL_SIZE // 2,
-            self.player[1] * CELL_SIZE + CELL_SIZE // 2
+            self.player[0] * self.cell_size + self.cell_size // 2,
+            self.player[1] * self.cell_size + self.cell_size // 2
         ]
         self.player_velocity = [0, 0]
 
         self.start_ticks = pygame.time.get_ticks()
         self.state = STATE_PLAYING
 
+    def apply_theme(self):
+        """Apply current theme colors"""
+        global COLOR_BG, COLOR_WALL, COLOR_WALL_EDGE, COLOR_PATH
+        global COLOR_PLAYER, COLOR_PLAYER_GLOW, COLOR_GOAL
+        global COLOR_TEXT, COLOR_TEXT_DIM, COLOR_ACCENT
+        
+        if self.dark_mode:
+            COLOR_BG = COLOR_BG_DARK
+            COLOR_WALL = COLOR_WALL_DARK
+            COLOR_WALL_EDGE = COLOR_WALL_EDGE_DARK
+            COLOR_PATH = COLOR_PATH_DARK
+            COLOR_PLAYER = COLOR_PLAYER_DARK
+            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_DARK
+            COLOR_GOAL = COLOR_GOAL_DARK
+            COLOR_TEXT = COLOR_TEXT_DARK
+            COLOR_TEXT_DIM = COLOR_TEXT_DIM_DARK
+            COLOR_ACCENT = COLOR_ACCENT_DARK
+        else:
+            COLOR_BG = COLOR_BG_LIGHT
+            COLOR_WALL = COLOR_WALL_LIGHT
+            COLOR_WALL_EDGE = COLOR_WALL_EDGE_LIGHT
+            COLOR_PATH = COLOR_PATH_LIGHT
+            COLOR_PLAYER = COLOR_PLAYER_LIGHT
+            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_LIGHT
+            COLOR_GOAL = COLOR_GOAL_LIGHT
+            COLOR_TEXT = COLOR_TEXT_LIGHT
+            COLOR_TEXT_DIM = COLOR_TEXT_DIM_LIGHT
+            COLOR_ACCENT = COLOR_ACCENT_LIGHT
+    
+    def toggle_theme(self):
+        """Toggle between dark and light mode"""
+        self.dark_mode = not self.dark_mode
+        self.apply_theme()
+        self.save_manager.save_settings(self.dark_mode, self.language)
+    
+    def toggle_language(self):
+        """Toggle between English and Persian"""
+        self.language = "fa" if self.language == "en" else "en"
+        self.save_manager.save_settings(self.dark_mode, self.language)
+    
+    def t(self, key):
+        """Get translated text"""
+        return get_text(key, self.language)
+    
     def try_move(self, dx, dy):
         # Set velocity based on input
         self.player_velocity = [dx * self.move_speed, dy * self.move_speed]
@@ -113,7 +200,7 @@ class Game:
         new_y = self.player_pixel_pos[1] + self.player_velocity[1]
         
         # Collision detection with walls
-        player_radius = CELL_SIZE // 2 - 3
+        player_radius = self.cell_size // 2 - 3
         
         # Check horizontal movement
         if self.player_velocity[0] != 0:
@@ -122,17 +209,17 @@ class Game:
             right_edge = new_x + player_radius
             
             # Convert to grid coordinates
-            left_cell = int(left_edge // CELL_SIZE)
-            right_cell = int(right_edge // CELL_SIZE)
-            current_cell_y = int(self.player_pixel_pos[1] // CELL_SIZE)
+            left_cell = int(left_edge // self.cell_size)
+            right_cell = int(right_edge // self.cell_size)
+            current_cell_y = int(self.player_pixel_pos[1] // self.cell_size)
             
             can_move = True
             if left_cell >= 0 and self.grid[current_cell_y][left_cell] == 1:
                 can_move = False
-                new_x = (left_cell + 1) * CELL_SIZE + player_radius
+                new_x = (left_cell + 1) * self.cell_size + player_radius
             if right_cell < len(self.grid[0]) and self.grid[current_cell_y][right_cell] == 1:
                 can_move = False
-                new_x = right_cell * CELL_SIZE - player_radius - 1
+                new_x = right_cell * self.cell_size - player_radius - 1
             
             if can_move:
                 self.player_pixel_pos[0] = new_x
@@ -144,17 +231,17 @@ class Game:
             top_edge = new_y - player_radius
             bottom_edge = new_y + player_radius
             
-            top_cell = int(top_edge // CELL_SIZE)
-            bottom_cell = int(bottom_edge // CELL_SIZE)
-            current_cell_x = int(self.player_pixel_pos[0] // CELL_SIZE)
+            top_cell = int(top_edge // self.cell_size)
+            bottom_cell = int(bottom_edge // self.cell_size)
+            current_cell_x = int(self.player_pixel_pos[0] // self.cell_size)
             
             can_move = True
             if top_cell >= 0 and self.grid[top_cell][current_cell_x] == 1:
                 can_move = False
-                new_y = (top_cell + 1) * CELL_SIZE + player_radius
+                new_y = (top_cell + 1) * self.cell_size + player_radius
             if bottom_cell < len(self.grid) and self.grid[bottom_cell][current_cell_x] == 1:
                 can_move = False
-                new_y = bottom_cell * CELL_SIZE - player_radius - 1
+                new_y = bottom_cell * self.cell_size - player_radius - 1
             
             if can_move:
                 self.player_pixel_pos[1] = new_y
@@ -163,8 +250,8 @@ class Game:
         
         # Update grid position for game logic
         self.player = (
-            int(self.player_pixel_pos[0] // CELL_SIZE),
-            int(self.player_pixel_pos[1] // CELL_SIZE)
+            int(self.player_pixel_pos[0] // self.cell_size),
+            int(self.player_pixel_pos[1] // self.cell_size)
         )
         
         # Check if reached goal
@@ -209,8 +296,8 @@ class Game:
     def draw_maze(self):
         for y, row in enumerate(self.grid):
             for x, val in enumerate(row):
-                rect = pygame.Rect(x * CELL_SIZE, self.hud_height + y * CELL_SIZE,
-                                    CELL_SIZE, CELL_SIZE)
+                rect = pygame.Rect(x * self.cell_size, self.hud_height + y * self.cell_size,
+                                    self.cell_size, self.cell_size)
                 if val == 1:
                     pygame.draw.rect(self.screen, COLOR_WALL, rect)
                     pygame.draw.rect(self.screen, COLOR_WALL_EDGE, rect, 1)
@@ -218,13 +305,13 @@ class Game:
                     pygame.draw.rect(self.screen, COLOR_PATH, rect)
 
         for (x, y, a) in self.trail:
-            cx = x * CELL_SIZE + CELL_SIZE // 2
-            cy = self.hud_height + y * CELL_SIZE + CELL_SIZE // 2
-            radius = int(CELL_SIZE * 0.15 * a) + 1
-            surf = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
+            cx = x * self.cell_size + self.cell_size // 2
+            cy = self.hud_height + y * self.cell_size + self.cell_size // 2
+            radius = int(self.cell_size * 0.15 * a) + 1
+            surf = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
             pygame.draw.circle(surf, (*COLOR_PLAYER, int(120 * a)),
-                                (CELL_SIZE // 2, CELL_SIZE // 2), radius)
-            self.screen.blit(surf, (cx - CELL_SIZE // 2, cy - CELL_SIZE // 2))
+                                (self.cell_size // 2, self.cell_size // 2), radius)
+            self.screen.blit(surf, (cx - self.cell_size // 2, cy - self.cell_size // 2))
 
         # Goal is hidden - no visual indicator
         # Player must find the exit by exploring
@@ -232,34 +319,36 @@ class Game:
         px, py = self.player_pixel_pos
         pcx = px
         pcy = self.hud_height + py
-        glow_r = CELL_SIZE // 2 + 4 + int(2 * abs((self.anim_t % 40) - 20) / 20)
+        glow_r = self.cell_size // 2 + 4 + int(2 * abs((self.anim_t % 40) - 20) / 20)
         glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
         pygame.draw.circle(glow_surf, (*COLOR_PLAYER_GLOW, 70), (glow_r, glow_r), glow_r)
         self.screen.blit(glow_surf, (pcx - glow_r, pcy - glow_r))
-        pygame.draw.circle(self.screen, COLOR_PLAYER, (pcx, pcy), CELL_SIZE // 2 - 3)
+        pygame.draw.circle(self.screen, COLOR_PLAYER, (pcx, pcy), self.cell_size // 2 - 3)
 
     def draw_hud(self):
-        pygame.draw.rect(self.screen, (12, 12, 18), (0, 0, self.width, self.hud_height))
+        pygame.draw.rect(self.screen, (12, 12, 18) if self.dark_mode else (230, 230, 240), (0, 0, self.width, self.hud_height))
         pygame.draw.line(self.screen, COLOR_ACCENT, (0, self.hud_height),
                           (self.width, self.hud_height), 2)
 
-        level_txt = self.font_medium.render(f"Level {self.level_num}", True, COLOR_TEXT)
+        font = self.persian_font if self.language == "fa" else self.font_medium
+        level_txt = font.render(f"{self.t('level')} {self.level_num}", True, COLOR_TEXT)
         self.screen.blit(level_txt, (16, 16))
 
-        moves_txt = self.font_small.render(f"Moves: {self.move_count}", True, COLOR_TEXT_DIM)
+        font_small = self.persian_font if self.language == "fa" else self.font_small
+        moves_txt = font_small.render(f"{self.t('moves')}: {self.move_count}", True, COLOR_TEXT_DIM)
         self.screen.blit(moves_txt, (200, 20))
 
-        time_txt = self.font_small.render(f"Time: {self.elapsed:0.1f}s", True, COLOR_TEXT_DIM)
+        time_txt = font_small.render(f"{self.t('time')}: {self.elapsed:0.1f}s", True, COLOR_TEXT_DIM)
         self.screen.blit(time_txt, (self.width - 160, 20))
         
         best_time = self.best_times.get(self.level_num)
         best_str = f"{best_time:0.1f}s" if best_time is not None else "--"
-        best_txt = self.font_small.render(f"Best: {best_str}", True, COLOR_TEXT_DIM)
+        best_txt = font_small.render(f"{self.t('best')}: {best_str}", True, COLOR_TEXT_DIM)
         self.screen.blit(best_txt, (self.width - 160, 40))
         
         leaderboard = self.save_manager.load_leaderboard()
         if leaderboard:
-            rank_txt = self.font_small.render(f"Rank: {self.get_player_rank(leaderboard)}", True, COLOR_TEXT_DIM)
+            rank_txt = font_small.render(f"{self.t('rank')}: {self.get_player_rank(leaderboard)}", True, COLOR_TEXT_DIM)
             self.screen.blit(rank_txt, (self.width - 160, 60))
 
     def draw_center_message(self, title, subtitle, color):
@@ -283,25 +372,27 @@ class Game:
 
     def draw_menu(self):
         self.screen.fill(COLOR_BG)
-        title = self.font_big.render("Maze Runner", True, COLOR_ACCENT)
+        title = self.font_big.render(self.t("title"), True, COLOR_ACCENT)
         self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 80))
 
         lines = [
-            "Move with Arrow Keys or WASD",
-            "Find the hidden exit in the maze",
+            self.t("menu_move"),
+            self.t("menu_find_exit"),
             "",
-            f"Current Level: {self.level_num}",
-            f"Total Play Time: {self.total_play_time:.1f}s",
-            f"Levels Completed: {len([t for t in self.best_times.values() if t > 0])}",
+            f"{self.t('current_level')}: {self.level_num}",
+            f"{self.t('total_play_time')}: {self.total_play_time:.1f}s",
+            f"{self.t('levels_completed')}: {len([t for t in self.best_times.values() if t > 0])}",
             "",
-            "Press ENTER to continue",
-            "Press C to clear progress",
-            "Press ESC to quit",
-            "Press Q to quit to menu",
+            self.t("press_enter"),
+            self.t("press_clear"),
+            self.t("press_quit"),
+            self.t("toggle_theme"),
+            self.t("toggle_lang"),
         ]
         y = 200
         for line in lines:
-            surf = self.font_small.render(line, True, COLOR_TEXT)
+            font = self.persian_font if self.language == "fa" else self.font_small
+            surf = font.render(line, True, COLOR_TEXT)
             self.screen.blit(surf, (self.width // 2 - surf.get_width() // 2, y))
             y += 32
 
@@ -316,11 +407,19 @@ class Game:
         self.draw_hud()
 
         if self.state == STATE_WIN:
-            self.draw_center_message(
-                f"Level Complete! Time: {self.elapsed:.1f}s", "ENTER for next level   |   R to replay   |   Q to menu", COLOR_GOAL)
+            font = self.persian_font if self.language == "fa" else self.font_big
+            title_surf = font.render(f"{self.t('level_complete')} Time: {self.elapsed:.1f}s", True, COLOR_GOAL)
+            self.screen.blit(title_surf,
+                          (self.width // 2 - title_surf.get_width() // 2, self.height // 2 - 60))
+            
+            font_sub = self.persian_font if self.language == "fa" else self.font_medium
+            sub_surf = font_sub.render(self.t("next_replay_menu"), True, COLOR_TEXT_DIM)
+            self.screen.blit(sub_surf,
+                          (self.width // 2 - sub_surf.get_width() // 2, self.height // 2))
         
         # Draw quit button in corner
-        quit_btn = self.font_small.render("[Q] Menu  [ESC] Quit", True, COLOR_TEXT_DIM)
+        font_small = self.persian_font if self.language == "fa" else self.font_small
+        quit_btn = font_small.render(self.t("quit_menu"), True, COLOR_TEXT_DIM)
         self.screen.blit(quit_btn, (10, self.height - 30))
 
         pygame.display.flip()
@@ -349,6 +448,10 @@ class Game:
                             self.level_num = 1
                             self.best_times = {}
                             self.total_play_time = 0
+                        elif event.key == pygame.K_t:
+                            self.toggle_theme()
+                        elif event.key == pygame.K_l:
+                            self.toggle_language()
 
                     elif self.state == STATE_PLAYING:
                         if event.key == pygame.K_q:
@@ -365,6 +468,10 @@ class Game:
                             if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
                                 dx = 1
                             self.try_move(dx, dy)
+                    elif event.type == pygame.VIDEORESIZE:
+                        # Handle window resize
+                        self.width, self.height = event.w, event.h
+                        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
 
                     elif self.state == STATE_WIN:
                         if event.key == pygame.K_RETURN:
