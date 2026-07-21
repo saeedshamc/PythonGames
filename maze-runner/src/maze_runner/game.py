@@ -13,6 +13,15 @@ from .config import (
     COLOR_BG_LIGHT, COLOR_WALL_LIGHT, COLOR_WALL_EDGE_LIGHT, COLOR_PATH_LIGHT,
     COLOR_PLAYER_LIGHT, COLOR_PLAYER_GLOW_LIGHT, COLOR_GOAL_LIGHT,
     COLOR_TEXT_LIGHT, COLOR_TEXT_DIM_LIGHT, COLOR_ACCENT_LIGHT,
+    COLOR_BG_COLORFUL, COLOR_WALL_COLORFUL, COLOR_WALL_EDGE_COLORFUL, COLOR_PATH_COLORFUL,
+    COLOR_PLAYER_COLORFUL, COLOR_PLAYER_GLOW_COLORFUL, COLOR_GOAL_COLORFUL,
+    COLOR_TEXT_COLORFUL, COLOR_TEXT_DIM_COLORFUL, COLOR_ACCENT_COLORFUL,
+    COLOR_BG_RETRO, COLOR_WALL_RETRO, COLOR_WALL_EDGE_RETRO, COLOR_PATH_RETRO,
+    COLOR_PLAYER_RETRO, COLOR_PLAYER_GLOW_RETRO, COLOR_GOAL_RETRO,
+    COLOR_TEXT_RETRO, COLOR_TEXT_DIM_RETRO, COLOR_ACCENT_RETRO,
+    COLOR_BG_MINIMAL, COLOR_WALL_MINIMAL, COLOR_WALL_EDGE_MINIMAL, COLOR_PATH_MINIMAL,
+    COLOR_PLAYER_MINIMAL, COLOR_PLAYER_GLOW_MINIMAL, COLOR_GOAL_MINIMAL,
+    COLOR_TEXT_MINIMAL, COLOR_TEXT_DIM_MINIMAL, COLOR_ACCENT_MINIMAL,
     STATE_MENU, STATE_PLAYING, STATE_WIN,
 )
 from .maze import generate_solvable_maze
@@ -47,6 +56,7 @@ class Game:
         # Theme and language settings
         self.dark_mode = True
         self.language = "en"  # "en" or "fa"
+        self.theme_mode = "dark"  # dark, light, colorful, retro, minimal
         
         # Load theme/language from save
         try:
@@ -205,7 +215,7 @@ class Game:
             COLOR_TEXT = (255, 255, 255)
             COLOR_TEXT_DIM = (200, 200, 200)
             COLOR_ACCENT = (255, 255, 0)
-        elif self.dark_mode:
+        elif self.theme_mode == "dark":
             COLOR_BG = COLOR_BG_DARK
             COLOR_WALL = COLOR_WALL_DARK
             COLOR_WALL_EDGE = COLOR_WALL_EDGE_DARK
@@ -216,7 +226,7 @@ class Game:
             COLOR_TEXT = COLOR_TEXT_DARK
             COLOR_TEXT_DIM = COLOR_TEXT_DIM_DARK
             COLOR_ACCENT = COLOR_ACCENT_DARK
-        else:
+        elif self.theme_mode == "light":
             COLOR_BG = COLOR_BG_LIGHT
             COLOR_WALL = COLOR_WALL_LIGHT
             COLOR_WALL_EDGE = COLOR_WALL_EDGE_LIGHT
@@ -227,10 +237,46 @@ class Game:
             COLOR_TEXT = COLOR_TEXT_LIGHT
             COLOR_TEXT_DIM = COLOR_TEXT_DIM_LIGHT
             COLOR_ACCENT = COLOR_ACCENT_LIGHT
+        elif self.theme_mode == "colorful":
+            COLOR_BG = COLOR_BG_COLORFUL
+            COLOR_WALL = COLOR_WALL_COLORFUL
+            COLOR_WALL_EDGE = COLOR_WALL_EDGE_COLORFUL
+            COLOR_PATH = COLOR_PATH_COLORFUL
+            COLOR_PLAYER = COLOR_PLAYER_COLORFUL
+            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_COLORFUL
+            COLOR_GOAL = COLOR_GOAL_COLORFUL
+            COLOR_TEXT = COLOR_TEXT_COLORFUL
+            COLOR_TEXT_DIM = COLOR_TEXT_DIM_COLORFUL
+            COLOR_ACCENT = COLOR_ACCENT_COLORFUL
+        elif self.theme_mode == "retro":
+            COLOR_BG = COLOR_BG_RETRO
+            COLOR_WALL = COLOR_WALL_RETRO
+            COLOR_WALL_EDGE = COLOR_WALL_EDGE_RETRO
+            COLOR_PATH = COLOR_PATH_RETRO
+            COLOR_PLAYER = COLOR_PLAYER_RETRO
+            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_RETRO
+            COLOR_GOAL = COLOR_GOAL_RETRO
+            COLOR_TEXT = COLOR_TEXT_RETRO
+            COLOR_TEXT_DIM = COLOR_TEXT_DIM_RETRO
+            COLOR_ACCENT = COLOR_ACCENT_RETRO
+        elif self.theme_mode == "minimal":
+            COLOR_BG = COLOR_BG_MINIMAL
+            COLOR_WALL = COLOR_WALL_MINIMAL
+            COLOR_WALL_EDGE = COLOR_WALL_EDGE_MINIMAL
+            COLOR_PATH = COLOR_PATH_MINIMAL
+            COLOR_PLAYER = COLOR_PLAYER_MINIMAL
+            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_MINIMAL
+            COLOR_GOAL = COLOR_GOAL_MINIMAL
+            COLOR_TEXT = COLOR_TEXT_MINIMAL
+            COLOR_TEXT_DIM = COLOR_TEXT_DIM_MINIMAL
+            COLOR_ACCENT = COLOR_ACCENT_MINIMAL
     
     def toggle_theme(self):
-        """Toggle between dark and light mode"""
-        self.dark_mode = not self.dark_mode
+        """Cycle through all available themes"""
+        themes = ["dark", "light", "colorful", "retro", "minimal"]
+        current_index = themes.index(self.theme_mode)
+        self.theme_mode = themes[(current_index + 1) % len(themes)]
+        self.dark_mode = (self.theme_mode == "dark")
         self.apply_theme()
         self.save_manager.save_settings(self.dark_mode, self.language)
     
@@ -603,7 +649,7 @@ class Game:
             ]
         elif self.menu_state == "settings":
             buttons = [
-                {"text": f"Theme: {'Dark' if self.dark_mode else 'Light'}", "action": "theme", "icon": "◐"},
+                {"text": f"Theme: {self.theme_mode.capitalize()}", "action": "theme", "icon": "◐"},
                 {"text": f"Language: {'English' if self.language == 'en' else 'Persian'}", "action": "lang", "icon": "🌐"},
                 {"text": f"Move Speed: {self.move_speed_setting}", "action": "speed_up", "icon": "⬆"},
                 {"text": f"Mouse Sens: {self.mouse_sensitivity}", "action": "sens_up", "icon": "⬆"},
