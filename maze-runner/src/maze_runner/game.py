@@ -120,6 +120,10 @@ class Game:
         self.preview_maze = None
         self.preview_rotation_timer = 0
         self.preview_rotation_interval = 180  # Change preview every 3 seconds
+        
+        # Accessibility variables
+        self.high_contrast_mode = False
+        self.tab_navigation = False
 
         self.state = STATE_MENU
         self.grid = None
@@ -186,7 +190,19 @@ class Game:
         global COLOR_PLAYER, COLOR_PLAYER_GLOW, COLOR_GOAL
         global COLOR_TEXT, COLOR_TEXT_DIM, COLOR_ACCENT
         
-        if self.dark_mode:
+        if self.high_contrast_mode:
+            # High contrast mode - black and white with yellow accent
+            COLOR_BG = (0, 0, 0)
+            COLOR_WALL = (255, 255, 255)
+            COLOR_WALL_EDGE = (200, 200, 200)
+            COLOR_PATH = (0, 0, 0)
+            COLOR_PLAYER = (255, 255, 0)  # Yellow for visibility
+            COLOR_PLAYER_GLOW = (255, 255, 0)
+            COLOR_GOAL = (0, 255, 0)  # Green for exit
+            COLOR_TEXT = (255, 255, 255)
+            COLOR_TEXT_DIM = (200, 200, 200)
+            COLOR_ACCENT = (255, 255, 0)
+        elif self.dark_mode:
             COLOR_BG = COLOR_BG_DARK
             COLOR_WALL = COLOR_WALL_DARK
             COLOR_WALL_EDGE = COLOR_WALL_EDGE_DARK
@@ -534,6 +550,13 @@ class Game:
             self.mouse_sensitivity = (self.mouse_sensitivity % 6) + 1  # Cycle 1-6
             self.mouse_speed = self.mouse_sensitivity
             self.menu_buttons = []  # Recreate buttons with updated text
+        elif action == "contrast":
+            self.high_contrast_mode = not self.high_contrast_mode
+            self.apply_theme()
+            self.menu_buttons = []  # Recreate buttons with updated text
+        elif action == "tabnav":
+            self.tab_navigation = not self.tab_navigation
+            self.menu_buttons = []  # Recreate buttons with updated text
         elif action == "about":
             self.menu_state = "about"
             self.selected_button = 0
@@ -581,6 +604,8 @@ class Game:
                 {"text": f"Language: {'English' if self.language == 'en' else 'Persian'}", "action": "lang", "icon": "🌐"},
                 {"text": f"Move Speed: {self.move_speed_setting}", "action": "speed_up", "icon": "⬆"},
                 {"text": f"Mouse Sens: {self.mouse_sensitivity}", "action": "sens_up", "icon": "⬆"},
+                {"text": f"High Contrast: {'On' if self.high_contrast_mode else 'Off'}", "action": "contrast", "icon": "◑"},
+                {"text": f"Tab Nav: {'On' if self.tab_navigation else 'Off'}", "action": "tabnav", "icon": "⇥"},
                 {"text": "Back", "action": "back", "icon": "◀"},
             ]
         elif self.menu_state == "about":
@@ -833,6 +858,9 @@ class Game:
                         elif event.key == pygame.K_RETURN:
                             if self.menu_buttons:
                                 self.handle_menu_action(self.menu_buttons[self.selected_button]["action"])
+                        elif event.key == pygame.K_TAB and self.tab_navigation:
+                            if self.menu_buttons:
+                                self.selected_button = (self.selected_button + 1) % len(self.menu_buttons)
 
                     elif self.state == STATE_PLAYING:
                         if event.key == pygame.K_q:
