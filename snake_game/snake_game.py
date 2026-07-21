@@ -63,6 +63,17 @@ class SnakeGame:
         self.game_modes = ["Classic", "Wall", "Obstacles"]
         self.game_mode_selected = 0
         
+        # Initialize game state attributes before reset
+        self.obstacles = []
+        self.power_up = None
+        self.power_up_type = None
+        self.power_up_timer = 0
+        self.base_fps = FPS_START
+        
+        # Statistics
+        self.stats = self.load_stats()
+        self.game_start_time = None
+        
         self.reset()
 
     def reset(self):
@@ -79,14 +90,10 @@ class SnakeGame:
         self.obstacles = self.generate_obstacles()
         
         # Power-ups
-        self.power_up = None  # Current power-up on screen
-        self.power_up_type = None  # 'golden', 'blue', 'purple'
-        self.power_up_timer = 0  # Timer for temporary speed effects
-        self.base_fps = self.fps  # Store base FPS for speed power-ups
-        
-        # Statistics
-        self.stats = self.load_stats()
-        self.game_start_time = None
+        self.power_up = None
+        self.power_up_type = None
+        self.power_up_timer = 0
+        self.base_fps = self.fps
 
     def load_high_score(self):
         """Load high score from JSON file."""
