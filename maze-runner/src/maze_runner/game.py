@@ -115,6 +115,11 @@ class Game:
         # Settings variables
         self.move_speed_setting = 4
         self.mouse_sensitivity = 3
+        
+        # Maze preview variables
+        self.preview_maze = None
+        self.preview_rotation_timer = 0
+        self.preview_rotation_interval = 180  # Change preview every 3 seconds
 
         self.state = STATE_MENU
         self.grid = None
@@ -343,7 +348,77 @@ class Game:
             self.sound.play("move")
 
         self.trail = [(x, y, a - 0.03) for (x, y, a) in self.trail if a - 0.03 > 0]
+        
+        # Update maze preview rotation in menu
+        if self.state == STATE_MENU:
+            self.preview_rotation_timer += 1
+            if self.preview_rotation_timer >= self.preview_rotation_interval:
+                self.preview_rotation_timer = 0
+                self.generate_preview_maze()
 
+    def generate_preview_maze(self):
+        """Generate a small preview maze for menu background"""
+        preview_size = 15
+        grid, start, goal = generate_solvable_maze(preview_size, preview_size)
+        self.preview_maze = {
+            "grid": grid,
+            "start": start,
+            "goal": goal,
+            "size": preview_size
+        }
+    
+    def draw_maze_preview(self):
+        """Draw a small maze preview in the menu background"""
+        if not self.preview_maze:
+            self.generate_preview_maze()
+        
+        grid = self.preview_maze["grid"]
+        size = self.preview_maze["size"]
+        
+        # Calculate preview position and size
+        preview_cell_size = 8
+        preview_width = size * preview_cell_size
+        preview_height = size * preview_cell_size
+        
+        # Position in bottom right corner
+        preview_x = self.width - preview_width - 20
+        preview_y = self.height - preview_height - 20
+        
+        # Draw preview background
+        preview_rect = pygame.Rect(preview_x - 5, preview_y - 5, preview_width + 10, preview_height + 10)
+        pygame.draw.rect(self.screen, COLOR_WALL, preview_rect, border_radius=8)
+        pygame.draw.rect(self.screen, COLOR_WALL_EDGE, preview_rect, 1, border_radius=8)
+        
+        # Draw maze
+        for y, row in enumerate(grid):
+            for x, val in enumerate(row):
+                if val == 1:
+                    cell_rect = pygame.Rect(
+                        preview_x + x * preview_cell_size,
+                        preview_y + y * preview_cell_size,
+                        preview_cell_size,
+                        preview_cell_size
+                    )
+                    pygame.draw.rect(self.screen, COLOR_PATH, cell_rect)
+                else:
+                    cell_rect = pygame.Rect(
+                        preview_x + x * preview_cell_size,
+                        preview_y + y * preview_cell_size,
+                        preview_cell_size,
+                        preview_cell_size
+                    )
+                    pygame.draw.rect(self.screen, COLOR_WALL, cell_rect)
+        
+        # Draw exit point
+        goal = self.preview_maze["goal"]
+        goal_rect = pygame.Rect(
+            preview_x + goal[0] * preview_cell_size,
+            preview_y + goal[1] * preview_cell_size,
+            preview_cell_size,
+            preview_cell_size
+        )
+        pygame.draw.rect(self.screen, COLOR_ACCENT, goal_rect)
+    
     def draw_maze(self):
         for y, row in enumerate(self.grid):
             for x, val in enumerate(row):
@@ -590,6 +665,9 @@ class Game:
     
     def draw_menu(self):
         self.screen.fill(COLOR_BG)
+        
+        # Draw maze preview in background
+        self.draw_maze_preview()
         
         # Update animation progress
         if self.menu_animation_progress < 1.0:
