@@ -165,17 +165,73 @@ class SnakeGame:
         self.save_stats()
 
     def get_snake_colors(self):
-        """Get snake colors based on selected theme."""
+        """Get snake colors based on selected theme and score progression."""
         theme = self.color_themes[self.color_selected]
+        
+        # Base colors from theme
         if theme == "Green":
-            return GREEN, DARK_GREEN
+            base_color = GREEN
+            dark_base = DARK_GREEN
         elif theme == "Blue":
-            return BLUE, (30, 60, 140)
+            base_color = BLUE
+            dark_base = (30, 60, 140)
         elif theme == "Purple":
-            return PURPLE, (100, 80, 160)
+            base_color = PURPLE
+            dark_base = (100, 80, 160)
         elif theme == "Red":
-            return RED, (180, 30, 30)
-        return GREEN, DARK_GREEN
+            base_color = RED
+            dark_base = (180, 30, 30)
+        else:
+            base_color = GREEN
+            dark_base = DARK_GREEN
+        
+        # Apply score-based color progression
+        return self.get_progressive_colors(base_color, dark_base)
+
+    def get_progressive_colors(self, base_color, dark_base):
+        """Return colors that shift based on score progression."""
+        # Color progression levels based on score
+        if self.score < 50:
+            return base_color, dark_base
+        elif self.score < 100:
+            # Shift towards cyan
+            return self.blend_colors(base_color, CYAN, 0.3), self.blend_colors(dark_base, CYAN, 0.3)
+        elif self.score < 200:
+            # More cyan
+            return self.blend_colors(base_color, CYAN, 0.5), self.blend_colors(dark_base, CYAN, 0.5)
+        elif self.score < 300:
+            # Shift towards gold
+            return self.blend_colors(base_color, GOLD, 0.4), self.blend_colors(dark_base, GOLD, 0.4)
+        elif self.score < 500:
+            # More gold
+            return self.blend_colors(base_color, GOLD, 0.6), self.blend_colors(dark_base, GOLD, 0.6)
+        elif self.score < 750:
+            # Shift towards bright orange
+            return self.blend_colors(base_color, (255, 165, 0), 0.5), self.blend_colors(dark_base, (255, 165, 0), 0.5)
+        elif self.score < 1000:
+            # Bright orange
+            return self.blend_colors(base_color, (255, 140, 0), 0.7), self.blend_colors(dark_base, (255, 140, 0), 0.7)
+        else:
+            # Rainbow effect for very high scores (1000+)
+            # Cycle through colors based on score
+            hue_shift = (self.score // 50) % 6
+            rainbow_colors = [
+                (255, 0, 0),    # Red
+                (255, 165, 0),  # Orange
+                (255, 255, 0),  # Yellow
+                (0, 255, 0),    # Green
+                (0, 0, 255),    # Blue
+                (128, 0, 128)   # Purple
+            ]
+            target_color = rainbow_colors[hue_shift]
+            return self.blend_colors(base_color, target_color, 0.8), self.blend_colors(dark_base, target_color, 0.8)
+
+    def blend_colors(self, color1, color2, factor):
+        """Blend two colors by a factor (0-1)."""
+        r = int(color1[0] + (color2[0] - color1[0]) * factor)
+        g = int(color1[1] + (color2[1] - color1[1]) * factor)
+        b = int(color1[2] + (color2[2] - color1[2]) * factor)
+        return (r, g, b)
 
     def get_difficulty_fps(self):
         """Get starting FPS based on difficulty."""
