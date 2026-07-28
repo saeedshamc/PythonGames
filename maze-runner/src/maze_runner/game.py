@@ -1,33 +1,16 @@
 import sys
-import random
 import pygame
 
 from .config import (
     CELL_SIZE, FPS, HUD_HEIGHT,
     COLOR_BG, COLOR_WALL, COLOR_WALL_EDGE, COLOR_PATH,
-    COLOR_PLAYER, COLOR_PLAYER_GLOW, COLOR_GOAL,
+    COLOR_PLAYER, COLOR_PLAYER_GLOW, COLOR_GOAL, COLOR_DANGER,
     COLOR_TEXT, COLOR_TEXT_DIM, COLOR_ACCENT,
-    COLOR_BG_DARK, COLOR_WALL_DARK, COLOR_WALL_EDGE_DARK, COLOR_PATH_DARK,
-    COLOR_PLAYER_DARK, COLOR_PLAYER_GLOW_DARK, COLOR_GOAL_DARK,
-    COLOR_TEXT_DARK, COLOR_TEXT_DIM_DARK, COLOR_ACCENT_DARK,
-    COLOR_BG_LIGHT, COLOR_WALL_LIGHT, COLOR_WALL_EDGE_LIGHT, COLOR_PATH_LIGHT,
-    COLOR_PLAYER_LIGHT, COLOR_PLAYER_GLOW_LIGHT, COLOR_GOAL_LIGHT,
-    COLOR_TEXT_LIGHT, COLOR_TEXT_DIM_LIGHT, COLOR_ACCENT_LIGHT,
-    COLOR_BG_COLORFUL, COLOR_WALL_COLORFUL, COLOR_WALL_EDGE_COLORFUL, COLOR_PATH_COLORFUL,
-    COLOR_PLAYER_COLORFUL, COLOR_PLAYER_GLOW_COLORFUL, COLOR_GOAL_COLORFUL,
-    COLOR_TEXT_COLORFUL, COLOR_TEXT_DIM_COLORFUL, COLOR_ACCENT_COLORFUL,
-    COLOR_BG_RETRO, COLOR_WALL_RETRO, COLOR_WALL_EDGE_RETRO, COLOR_PATH_RETRO,
-    COLOR_PLAYER_RETRO, COLOR_PLAYER_GLOW_RETRO, COLOR_GOAL_RETRO,
-    COLOR_TEXT_RETRO, COLOR_TEXT_DIM_RETRO, COLOR_ACCENT_RETRO,
-    COLOR_BG_MINIMAL, COLOR_WALL_MINIMAL, COLOR_WALL_EDGE_MINIMAL, COLOR_PATH_MINIMAL,
-    COLOR_PLAYER_MINIMAL, COLOR_PLAYER_GLOW_MINIMAL, COLOR_GOAL_MINIMAL,
-    COLOR_TEXT_MINIMAL, COLOR_TEXT_DIM_MINIMAL, COLOR_ACCENT_MINIMAL,
-    STATE_MENU, STATE_PLAYING, STATE_WIN,
+    STATE_MENU, STATE_PLAYING, STATE_WIN, STATE_LOSE, STATE_GAME_COMPLETE,
 )
+from .levels import FIXED_MAZE_LEVEL_1, LEVEL_CONFIGS, TOTAL_LEVELS
 from .maze import generate_solvable_maze
 from .audio import SoundManager
-from .save_manager import SaveManager
-from .localization import get_text
 
 
 class Game:
@@ -35,379 +18,81 @@ class Game:
         pygame.init()
         self.sound = SoundManager()
 
-        # Initialize save manager first
-        self.save_manager = SaveManager()
+        max_w = max(cfg[0] for cfg in LEVEL_CONFIGS if cfg)
+        max_h = max(cfg[1] for cfg in LEVEL_CONFIGS if cfg)
+        max_w = max(max_w, len(FIXED_MAZE_LEVEL_1[0]))
+        max_h = max(max_h, len(FIXED_MAZE_LEVEL_1))
 
-        # Set default values
-        self.level_num = 1
-        self.best_times = {}
-        self.total_play_time = 0
-        
-        # Load saved progress
-        try:
-            saved_data = self.save_manager.load_progress()
-            self.level_num = saved_data["current_level"]
-            self.best_times = saved_data["best_times"]
-            self.total_play_time = saved_data["total_play_time"]
-        except:
-            # If loading fails, use defaults
-            pass
-        
-        # Theme and language settings
-        self.dark_mode = True
-        self.language = "en"  # "en" or "fa"
-        self.theme_mode = "dark"  # dark, light, colorful, retro, minimal
-        
-        # Load theme/language from save
-        try:
-            settings = self.save_manager.load_settings()
-            if settings:
-                self.dark_mode = settings.get("dark_mode", True)
-                self.language = settings.get("language", "en")
-        except:
-            pass
-        
-        # Accessibility variables (must be before apply_theme)
-        self.high_contrast_mode = False
-        self.tab_navigation = False
-        
-        # Input mode setting: hybrid, keyboard, mouse
-        self.input_mode = "hybrid"
-        
-        # Apply theme
-        self.apply_theme()
-        
-        # Set HUD height first
         self.hud_height = HUD_HEIGHT
-        
-        # Get screen info for responsive sizing
-        self.screen_info = pygame.display.Info()
-        self.max_screen_width = self.screen_info.current_w - 100
-        self.max_screen_height = self.screen_info.current_h - 100
-        
-        # Calculate initial window size based on current level and screen
-        base_size = 15
-        size_increase = (self.level_num - 1) * 2
-        maze_size = base_size + size_increase
-        
-        # Calculate responsive cell size
-        max_maze_pixels = min(self.max_screen_width, self.max_screen_height - self.hud_height)
-        self.cell_size = max(20, min(40, max_maze_pixels // maze_size))
-        
-        self.width = maze_size * self.cell_size
-        self.height = maze_size * self.cell_size + self.hud_height
+        self.width = max_w * CELL_SIZE
+        self.height = max_h * CELL_SIZE + self.hud_height
 
-        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE | pygame.DOUBLEBUF)
+        self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Maze Runner")
         self.clock = pygame.time.Clock()
 
         self.font_big = pygame.font.SysFont("arial", 42, bold=True)
         self.font_medium = pygame.font.SysFont("arial", 24, bold=True)
         self.font_small = pygame.font.SysFont("arial", 18)
-        
-        # Try to load Persian-compatible font with RTL support
-        self.persian_font = None
-        possible_fonts = ["Tahoma", "Arial", "Segoe UI", "Microsoft Sans Serif", "DejaVu Sans"]
-        for font_name in possible_fonts:
-            try:
-                self.persian_font = pygame.font.SysFont(font_name, 24)
-                break
-            except:
-                continue
-        
-        # Mouse movement variables
-        self.mouse_target = None
-        self.mouse_speed = 3
-        
-        # Menu system
-        self.menu_state = "main"  # main, settings, about
-        self.menu_buttons = []
-        self.selected_button = 0
-        self.hovered_button = -1
-        
-        # Animation variables
-        self.menu_animation_progress = 0.0
-        self.menu_animation_speed = 0.05
-        
-        # Settings variables
-        self.move_speed_setting = 4
-        self.mouse_sensitivity = 3
-        
-        # Maze preview variables
-        self.preview_maze = None
-        self.preview_rotation_timer = 0
-        self.preview_rotation_interval = 180  # Change preview every 3 seconds
-        
-        # Menu sound variables
-        self.last_hovered_button = -1
-        
-        # User customization variables
-        self.player_name = "Player"
-        self.player_color = COLOR_PLAYER
-        
-        # Level history tracking
-        self.completed_levels = []  # List of completed level numbers
 
         self.state = STATE_MENU
+        self.level_num = 1
         self.grid = None
         self.player = (1, 1)
         self.goal = (1, 1)
         self.move_count = 0
         self.start_ticks = 0
+        self.time_limit = 999
         self.elapsed = 0
         self.trail = []
         self.anim_t = 0.0
-        
-        # Smooth movement variables
-        self.player_pixel_pos = [self.cell_size // 2, self.cell_size // 2]
-        self.player_velocity = [0, 0]
-        self.move_speed = 4  # pixels per frame
 
     def load_level(self, level_num):
         self.level_num = level_num
         self.move_count = 0
         self.trail = []
 
-        # Check if this level has a saved map
-        saved_level = self.save_manager.load_level_map(level_num)
-        if saved_level:
-            self.grid = saved_level["grid"]
-            self.player = tuple(saved_level["player"])
-            self.goal = tuple(saved_level["goal"])
+        if level_num == 1:
+            self.grid = [row[:] for row in FIXED_MAZE_LEVEL_1]
+            self.player = (1, 1)
+            self.goal = (len(self.grid[0]) - 2, len(self.grid) - 2)
+            self.time_limit = LEVEL_CONFIGS[1][2]
         else:
-            # Infinite level generation - maze size increases with level
-            base_size = 15
-            size_increase = (level_num - 1) * 2
-            maze_size = base_size + size_increase
-            
-            grid, start, goal = generate_solvable_maze(maze_size, maze_size)
+            w, h, time_limit = LEVEL_CONFIGS[level_num]
+            grid, start, goal = generate_solvable_maze(w, h)
             self.grid = grid
             self.player = start
             self.goal = goal
-            
-            # Save this level's map for future replay
-            self.save_manager.save_level_map(level_num, grid, start, goal)
-        
-        # Resize window to fit current maze with responsive sizing
-        maze_size = len(self.grid)
-        max_maze_pixels = min(self.max_screen_width, self.max_screen_height - self.hud_height)
-        self.cell_size = max(20, min(40, max_maze_pixels // maze_size))
-        
-        self.width = maze_size * self.cell_size
-        self.height = maze_size * self.cell_size + self.hud_height
-        self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE)
-        
-        # Reset player pixel position to center of starting cell
-        self.player_pixel_pos = [
-            self.player[0] * self.cell_size + self.cell_size // 2,
-            self.player[1] * self.cell_size + self.cell_size // 2
-        ]
-        self.player_velocity = [0, 0]
+            self.time_limit = time_limit
 
         self.start_ticks = pygame.time.get_ticks()
         self.state = STATE_PLAYING
 
-    def apply_theme(self):
-        """Apply current theme colors"""
-        global COLOR_BG, COLOR_WALL, COLOR_WALL_EDGE, COLOR_PATH
-        global COLOR_PLAYER, COLOR_PLAYER_GLOW, COLOR_GOAL
-        global COLOR_TEXT, COLOR_TEXT_DIM, COLOR_ACCENT
-        
-        if self.high_contrast_mode:
-            # High contrast mode - black and white with yellow accent
-            COLOR_BG = (0, 0, 0)
-            COLOR_WALL = (255, 255, 255)
-            COLOR_WALL_EDGE = (200, 200, 200)
-            COLOR_PATH = (0, 0, 0)
-            COLOR_PLAYER = (255, 255, 0)  # Yellow for visibility
-            COLOR_PLAYER_GLOW = (255, 255, 0)
-            COLOR_GOAL = (0, 255, 0)  # Green for exit
-            COLOR_TEXT = (255, 255, 255)
-            COLOR_TEXT_DIM = (200, 200, 200)
-            COLOR_ACCENT = (255, 255, 0)
-        elif self.theme_mode == "dark":
-            COLOR_BG = COLOR_BG_DARK
-            COLOR_WALL = COLOR_WALL_DARK
-            COLOR_WALL_EDGE = COLOR_WALL_EDGE_DARK
-            COLOR_PATH = COLOR_PATH_DARK
-            COLOR_PLAYER = COLOR_PLAYER_DARK
-            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_DARK
-            COLOR_GOAL = COLOR_GOAL_DARK
-            COLOR_TEXT = COLOR_TEXT_DARK
-            COLOR_TEXT_DIM = COLOR_TEXT_DIM_DARK
-            COLOR_ACCENT = COLOR_ACCENT_DARK
-        elif self.theme_mode == "light":
-            COLOR_BG = COLOR_BG_LIGHT
-            COLOR_WALL = COLOR_WALL_LIGHT
-            COLOR_WALL_EDGE = COLOR_WALL_EDGE_LIGHT
-            COLOR_PATH = COLOR_PATH_LIGHT
-            COLOR_PLAYER = COLOR_PLAYER_LIGHT
-            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_LIGHT
-            COLOR_GOAL = COLOR_GOAL_LIGHT
-            COLOR_TEXT = COLOR_TEXT_LIGHT
-            COLOR_TEXT_DIM = COLOR_TEXT_DIM_LIGHT
-            COLOR_ACCENT = COLOR_ACCENT_LIGHT
-        elif self.theme_mode == "colorful":
-            COLOR_BG = COLOR_BG_COLORFUL
-            COLOR_WALL = COLOR_WALL_COLORFUL
-            COLOR_WALL_EDGE = COLOR_WALL_EDGE_COLORFUL
-            COLOR_PATH = COLOR_PATH_COLORFUL
-            COLOR_PLAYER = COLOR_PLAYER_COLORFUL
-            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_COLORFUL
-            COLOR_GOAL = COLOR_GOAL_COLORFUL
-            COLOR_TEXT = COLOR_TEXT_COLORFUL
-            COLOR_TEXT_DIM = COLOR_TEXT_DIM_COLORFUL
-            COLOR_ACCENT = COLOR_ACCENT_COLORFUL
-        elif self.theme_mode == "retro":
-            COLOR_BG = COLOR_BG_RETRO
-            COLOR_WALL = COLOR_WALL_RETRO
-            COLOR_WALL_EDGE = COLOR_WALL_EDGE_RETRO
-            COLOR_PATH = COLOR_PATH_RETRO
-            COLOR_PLAYER = COLOR_PLAYER_RETRO
-            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_RETRO
-            COLOR_GOAL = COLOR_GOAL_RETRO
-            COLOR_TEXT = COLOR_TEXT_RETRO
-            COLOR_TEXT_DIM = COLOR_TEXT_DIM_RETRO
-            COLOR_ACCENT = COLOR_ACCENT_RETRO
-        elif self.theme_mode == "minimal":
-            COLOR_BG = COLOR_BG_MINIMAL
-            COLOR_WALL = COLOR_WALL_MINIMAL
-            COLOR_WALL_EDGE = COLOR_WALL_EDGE_MINIMAL
-            COLOR_PATH = COLOR_PATH_MINIMAL
-            COLOR_PLAYER = COLOR_PLAYER_MINIMAL
-            COLOR_PLAYER_GLOW = COLOR_PLAYER_GLOW_MINIMAL
-            COLOR_GOAL = COLOR_GOAL_MINIMAL
-            COLOR_TEXT = COLOR_TEXT_MINIMAL
-            COLOR_TEXT_DIM = COLOR_TEXT_DIM_MINIMAL
-            COLOR_ACCENT = COLOR_ACCENT_MINIMAL
-    
-    def toggle_theme(self):
-        """Cycle through all available themes"""
-        themes = ["dark", "light", "colorful", "retro", "minimal"]
-        current_index = themes.index(self.theme_mode)
-        self.theme_mode = themes[(current_index + 1) % len(themes)]
-        self.dark_mode = (self.theme_mode == "dark")
-        self.apply_theme()
-        self.save_manager.save_settings(self.dark_mode, self.language)
-    
-    def toggle_language(self):
-        """Toggle between English and Persian"""
-        self.language = "fa" if self.language == "en" else "en"
-        self.save_manager.save_settings(self.dark_mode, self.language)
-    
-    def t(self, key):
-        """Get translated text"""
-        return get_text(key, self.language)
-    
     def try_move(self, dx, dy):
-        # Set velocity based on input
-        self.player_velocity = [dx * self.move_speed, dy * self.move_speed]
-    
-    def update_player_position(self):
-        if self.state != STATE_PLAYING:
-            return
-        
-        # Handle mouse movement (only if input mode allows)
-        if self.input_mode in ["hybrid", "mouse"] and self.mouse_target:
-            target_x, target_y = self.mouse_target
-            dx = target_x - self.player_pixel_pos[0]
-            dy = target_y - self.player_pixel_pos[1]
-            distance = (dx ** 2 + dy ** 2) ** 0.5
-            
-            if distance > self.mouse_speed:
-                # Move towards target
-                self.player_velocity = [
-                    (dx / distance) * self.mouse_speed,
-                    (dy / distance) * self.mouse_speed
-                ]
-            else:
-                # Reached target
-                self.player_pixel_pos = [target_x, target_y]
-                self.player_velocity = [0, 0]
-                self.mouse_target = None
-        
-        # Calculate new position
-        new_x = self.player_pixel_pos[0] + self.player_velocity[0]
-        new_y = self.player_pixel_pos[1] + self.player_velocity[1]
-        
-        # Collision detection with walls
-        player_radius = self.cell_size // 2 - 3
-        
-        # Check horizontal movement
-        if self.player_velocity[0] != 0:
-            # Check left and right edges of player
-            left_edge = new_x - player_radius
-            right_edge = new_x + player_radius
-            
-            # Convert to grid coordinates
-            left_cell = int(left_edge // self.cell_size)
-            right_cell = int(right_edge // self.cell_size)
-            current_cell_y = int(self.player_pixel_pos[1] // self.cell_size)
-            
-            can_move = True
-            if left_cell >= 0 and self.grid[current_cell_y][left_cell] == 1:
-                can_move = False
-                new_x = (left_cell + 1) * self.cell_size + player_radius
-            if right_cell < len(self.grid[0]) and self.grid[current_cell_y][right_cell] == 1:
-                can_move = False
-                new_x = right_cell * self.cell_size - player_radius - 1
-            
-            if can_move:
-                self.player_pixel_pos[0] = new_x
-            else:
-                self.player_pixel_pos[0] = new_x
-        
-        # Check vertical movement
-        if self.player_velocity[1] != 0:
-            top_edge = new_y - player_radius
-            bottom_edge = new_y + player_radius
-            
-            top_cell = int(top_edge // self.cell_size)
-            bottom_cell = int(bottom_edge // self.cell_size)
-            current_cell_x = int(self.player_pixel_pos[0] // self.cell_size)
-            
-            can_move = True
-            if top_cell >= 0 and self.grid[top_cell][current_cell_x] == 1:
-                can_move = False
-                new_y = (top_cell + 1) * self.cell_size + player_radius
-            if bottom_cell < len(self.grid) and self.grid[bottom_cell][current_cell_x] == 1:
-                can_move = False
-                new_y = bottom_cell * self.cell_size - player_radius - 1
-            
-            if can_move:
-                self.player_pixel_pos[1] = new_y
-            else:
-                self.player_pixel_pos[1] = new_y
-        
-        # Update grid position for game logic
-        self.player = (
-            int(self.player_pixel_pos[0] // self.cell_size),
-            int(self.player_pixel_pos[1] // self.cell_size)
-        )
-        
-        # Check if reached goal
-        if self.player == self.goal:
-            self.on_win()
-        
-        # Add trail occasionally
-        if int(self.anim_t) % 10 == 0:
-            self.trail.append((self.player[0], self.player[1], 1.0))
+        x, y = self.player
+        nx, ny = x + dx, y + dy
+        h = len(self.grid)
+        w = len(self.grid[0])
+        if 0 <= nx < w and 0 <= ny < h and self.grid[ny][nx] == 0:
+            self.trail.append((x, y, 1.0))
+            self.player = (nx, ny)
+            self.move_count += 1
+            self.sound.play("move")
+            if self.player == self.goal:
+                self.on_win()
+        else:
+            self.sound.play("wall")
 
     def on_win(self):
         self.sound.play("win")
-        # Save best time for this level
-        if self.level_num not in self.best_times or self.elapsed < self.best_times[self.level_num]:
-            self.best_times[self.level_num] = self.elapsed
-        self.total_play_time += self.elapsed
-        # Track completed level
-        if self.level_num not in self.completed_levels:
-            self.completed_levels.append(self.level_num)
-        # Add to leaderboard
-        self.save_manager.add_to_leaderboard(self.level_num, self.elapsed)
-        # Save progress
-        self.save_manager.save_progress(self.level_num + 1, self.best_times, self.total_play_time)
-        self.state = STATE_WIN
+        if self.level_num >= TOTAL_LEVELS:
+            self.state = STATE_GAME_COMPLETE
+        else:
+            self.state = STATE_WIN
 
+    def on_time_up(self):
+        self.sound.play("time_up")
+        self.state = STATE_LOSE
 
     def update(self):
         self.anim_t += 1
@@ -416,150 +101,65 @@ class Game:
 
         now = pygame.time.get_ticks()
         self.elapsed = (now - self.start_ticks) / 1000.0
-        
-        # Update smooth player movement
-        self.update_player_position()
-        
-        # Count moves based on position changes
-        if int(self.anim_t) % 30 == 0 and (self.player_velocity[0] != 0 or self.player_velocity[1] != 0):
-            self.move_count += 1
-            self.sound.play("move")
+
+        if self.elapsed >= self.time_limit:
+            self.on_time_up()
+            return
 
         self.trail = [(x, y, a - 0.03) for (x, y, a) in self.trail if a - 0.03 > 0]
-        
-        # Update maze preview rotation in menu
-        if self.state == STATE_MENU:
-            self.preview_rotation_timer += 1
-            if self.preview_rotation_timer >= self.preview_rotation_interval:
-                self.preview_rotation_timer = 0
-                self.generate_preview_maze()
 
-    def generate_preview_maze(self):
-        """Generate a small preview maze for menu background"""
-        preview_size = 15
-        grid, start, goal = generate_solvable_maze(preview_size, preview_size)
-        self.preview_maze = {
-            "grid": grid,
-            "start": start,
-            "goal": goal,
-            "size": preview_size
-        }
-    
-    def draw_maze_preview(self):
-        """Draw a small maze preview in the menu background"""
-        if not self.preview_maze:
-            self.generate_preview_maze()
-        
-        grid = self.preview_maze["grid"]
-        size = self.preview_maze["size"]
-        
-        # Calculate preview position and size
-        preview_cell_size = 8
-        preview_width = size * preview_cell_size
-        preview_height = size * preview_cell_size
-        
-        # Position in bottom right corner
-        preview_x = self.width - preview_width - 20
-        preview_y = self.height - preview_height - 20
-        
-        # Draw preview background
-        preview_rect = pygame.Rect(preview_x - 5, preview_y - 5, preview_width + 10, preview_height + 10)
-        pygame.draw.rect(self.screen, COLOR_WALL, preview_rect, border_radius=8)
-        pygame.draw.rect(self.screen, COLOR_WALL_EDGE, preview_rect, 1, border_radius=8)
-        
-        # Draw maze
-        for y, row in enumerate(grid):
-            for x, val in enumerate(row):
-                if val == 1:
-                    cell_rect = pygame.Rect(
-                        preview_x + x * preview_cell_size,
-                        preview_y + y * preview_cell_size,
-                        preview_cell_size,
-                        preview_cell_size
-                    )
-                    pygame.draw.rect(self.screen, COLOR_PATH, cell_rect)
-                else:
-                    cell_rect = pygame.Rect(
-                        preview_x + x * preview_cell_size,
-                        preview_y + y * preview_cell_size,
-                        preview_cell_size,
-                        preview_cell_size
-                    )
-                    pygame.draw.rect(self.screen, COLOR_WALL, cell_rect)
-        
-        # Draw exit point
-        goal = self.preview_maze["goal"]
-        goal_rect = pygame.Rect(
-            preview_x + goal[0] * preview_cell_size,
-            preview_y + goal[1] * preview_cell_size,
-            preview_cell_size,
-            preview_cell_size
-        )
-        pygame.draw.rect(self.screen, COLOR_ACCENT, goal_rect)
-    
     def draw_maze(self):
         for y, row in enumerate(self.grid):
             for x, val in enumerate(row):
-                rect = pygame.Rect(x * self.cell_size, self.hud_height + y * self.cell_size,
-                                    self.cell_size, self.cell_size)
+                rect = pygame.Rect(x * CELL_SIZE, self.hud_height + y * CELL_SIZE,
+                                    CELL_SIZE, CELL_SIZE)
                 if val == 1:
                     pygame.draw.rect(self.screen, COLOR_WALL, rect)
-                    # Smooth anti-aliased edges
-                    pygame.draw.rect(self.screen, COLOR_WALL_EDGE, rect, 1, border_radius=1)
+                    pygame.draw.rect(self.screen, COLOR_WALL_EDGE, rect, 1)
                 else:
                     pygame.draw.rect(self.screen, COLOR_PATH, rect)
 
         for (x, y, a) in self.trail:
-            cx = x * self.cell_size + self.cell_size // 2
-            cy = self.hud_height + y * self.cell_size + self.cell_size // 2
-            radius = int(self.cell_size * 0.15 * a) + 1
-            # Anti-aliased circles
-            surf = pygame.Surface((self.cell_size, self.cell_size), pygame.SRCALPHA)
+            cx = x * CELL_SIZE + CELL_SIZE // 2
+            cy = self.hud_height + y * CELL_SIZE + CELL_SIZE // 2
+            radius = int(CELL_SIZE * 0.15 * a) + 1
+            surf = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
             pygame.draw.circle(surf, (*COLOR_PLAYER, int(120 * a)),
-                                (self.cell_size // 2, self.cell_size // 2), radius)
-            self.screen.blit(surf, (cx - self.cell_size // 2, cy - self.cell_size // 2))
+                                (CELL_SIZE // 2, CELL_SIZE // 2), radius)
+            self.screen.blit(surf, (cx - CELL_SIZE // 2, cy - CELL_SIZE // 2))
 
-        # Goal is hidden - no visual indicator
-        # Player must find the exit by exploring
+        gx, gy = self.goal
+        pulse = 3 + 2 * abs((self.anim_t % 60) - 30) / 30
+        gcx = gx * CELL_SIZE + CELL_SIZE // 2
+        gcy = self.hud_height + gy * CELL_SIZE + CELL_SIZE // 2
+        pygame.draw.circle(self.screen, COLOR_GOAL, (gcx, gcy), CELL_SIZE // 2 - 2)
+        pygame.draw.circle(self.screen, (255, 255, 255), (gcx, gcy),
+                            int(CELL_SIZE // 2 - 2 + pulse), 2)
 
-        px, py = self.player_pixel_pos
-        pcx = px
-        pcy = self.hud_height + py
-        glow_r = self.cell_size // 2 + 4 + int(2 * abs((self.anim_t % 40) - 20) / 20)
+        px, py = self.player
+        pcx = px * CELL_SIZE + CELL_SIZE // 2
+        pcy = self.hud_height + py * CELL_SIZE + CELL_SIZE // 2
+        glow_r = CELL_SIZE // 2 + 4 + int(2 * abs((self.anim_t % 40) - 20) / 20)
         glow_surf = pygame.Surface((glow_r * 2, glow_r * 2), pygame.SRCALPHA)
-        # Anti-aliased glow
         pygame.draw.circle(glow_surf, (*COLOR_PLAYER_GLOW, 70), (glow_r, glow_r), glow_r)
         self.screen.blit(glow_surf, (pcx - glow_r, pcy - glow_r))
-        pygame.draw.circle(self.screen, COLOR_PLAYER, (pcx, pcy), self.cell_size // 2 - 3)
+        pygame.draw.circle(self.screen, COLOR_PLAYER, (pcx, pcy), CELL_SIZE // 2 - 3)
 
     def draw_hud(self):
-        # Smooth gradient background for HUD
-        hud_color = (12, 12, 18) if self.dark_mode else (230, 230, 240)
-        pygame.draw.rect(self.screen, hud_color, (0, 0, self.width, self.hud_height), border_radius=0)
-        # Anti-aliased divider line
-        pygame.draw.aaline(self.screen, COLOR_ACCENT, (0, self.hud_height), (self.width, self.hud_height))
-        pygame.draw.line(self.screen, COLOR_ACCENT, (0, self.hud_height), (self.width, self.hud_height), 2)
+        pygame.draw.rect(self.screen, (12, 12, 18), (0, 0, self.width, self.hud_height))
+        pygame.draw.line(self.screen, COLOR_ACCENT, (0, self.hud_height),
+                          (self.width, self.hud_height), 2)
 
-        font = self.persian_font if self.language == "fa" else self.font_medium
-        level_txt = font.render(f"{self.t('level')} {self.level_num}", True, COLOR_TEXT)
+        level_txt = self.font_medium.render(f"Level {self.level_num}/{TOTAL_LEVELS}", True, COLOR_TEXT)
         self.screen.blit(level_txt, (16, 16))
 
-        font_small = self.persian_font if self.language == "fa" else self.font_small
-        moves_txt = font_small.render(f"{self.t('moves')}: {self.move_count}", True, COLOR_TEXT_DIM)
+        moves_txt = self.font_small.render(f"Moves: {self.move_count}", True, COLOR_TEXT_DIM)
         self.screen.blit(moves_txt, (200, 20))
 
-        time_txt = font_small.render(f"{self.t('time')}: {self.elapsed:0.1f}s", True, COLOR_TEXT_DIM)
+        remaining = max(0, self.time_limit - self.elapsed)
+        time_color = COLOR_TEXT_DIM if remaining > 10 else COLOR_DANGER
+        time_txt = self.font_small.render(f"Time: {remaining:0.1f}s", True, time_color)
         self.screen.blit(time_txt, (self.width - 160, 20))
-        
-        best_time = self.best_times.get(self.level_num)
-        best_str = f"{best_time:0.1f}s" if best_time is not None else "--"
-        best_txt = font_small.render(f"{self.t('best')}: {best_str}", True, COLOR_TEXT_DIM)
-        self.screen.blit(best_txt, (self.width - 160, 40))
-        
-        leaderboard = self.save_manager.load_leaderboard()
-        if leaderboard:
-            rank_txt = font_small.render(f"{self.t('rank')}: {self.get_player_rank(leaderboard)}", True, COLOR_TEXT_DIM)
-            self.screen.blit(rank_txt, (self.width - 160, 60))
 
     def draw_center_message(self, title, subtitle, color):
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
@@ -574,352 +174,24 @@ class Game:
         self.screen.blit(sub_surf,
                           (self.width // 2 - sub_surf.get_width() // 2, self.height // 2))
 
-    def get_player_rank(self, leaderboard):
-        # Find player's rank based on total levels completed and best times
-        player_score = sum(1 for lvl, time in self.best_times.items() if time > 0)
-        ranked_above = sum(1 for entry in leaderboard if entry["level"] > player_score)
-        return ranked_above + 1
-
-    def handle_menu_action(self, action):
-        """Handle menu button actions"""
-        if action == "play":
-            # Load from saved level or start fresh
-            saved_data = self.save_manager.load_progress()
-            self.level_num = saved_data["current_level"]
-            self.best_times = saved_data["best_times"]
-            self.total_play_time = saved_data["total_play_time"]
-            self.load_level(self.level_num)
-            self.menu_buttons = []  # Clear buttons for next menu
-            self.menu_animation_progress = 0.0  # Reset animation
-        elif action == "settings":
-            self.menu_state = "settings"
-            self.selected_button = 0
-            self.menu_buttons = []
-            self.menu_animation_progress = 0.0  # Reset animation
-        elif action == "theme":
-            self.toggle_theme()
-            self.menu_buttons = []  # Recreate buttons with updated text
-            self.menu_animation_progress = 0.0  # Reset animation
-        elif action == "lang":
-            self.toggle_language()
-            self.menu_buttons = []  # Recreate buttons with updated text
-            self.menu_animation_progress = 0.0  # Reset animation
-        elif action == "speed_up":
-            self.move_speed_setting = (self.move_speed_setting % 8) + 2  # Cycle 2-8
-            self.move_speed = self.move_speed_setting
-            self.menu_buttons = []  # Recreate buttons with updated text
-        elif action == "sens_up":
-            self.mouse_sensitivity = (self.mouse_sensitivity % 6) + 1  # Cycle 1-6
-            self.mouse_speed = self.mouse_sensitivity
-            self.menu_buttons = []  # Recreate buttons with updated text
-        elif action == "contrast":
-            self.high_contrast_mode = not self.high_contrast_mode
-            self.apply_theme()
-            self.menu_buttons = []  # Recreate buttons with updated text
-        elif action == "tabnav":
-            self.tab_navigation = not self.tab_navigation
-            self.menu_buttons = []  # Recreate buttons with updated text
-        elif action == "pcolor":
-            # Cycle through player colors
-            colors = [COLOR_PLAYER, (255, 100, 100), (100, 255, 100), (100, 100, 255), (255, 255, 100), (255, 100, 255), (100, 255, 255)]
-            try:
-                current_index = colors.index(self.player_color)
-                self.player_color = colors[(current_index + 1) % len(colors)]
-            except ValueError:
-                self.player_color = colors[0]
-            COLOR_PLAYER = self.player_color
-            self.menu_buttons = []  # Recreate buttons with updated text
-        elif action == "input_mode":
-            # Cycle through input modes: hybrid -> keyboard -> mouse -> hybrid
-            modes = ["hybrid", "keyboard", "mouse"]
-            current_index = modes.index(self.input_mode)
-            self.input_mode = modes[(current_index + 1) % len(modes)]
-            self.menu_buttons = []  # Recreate buttons with updated text
-        elif action == "levels":
-            self.menu_state = "levels"
-            self.selected_button = 0
-            self.menu_buttons = []
-            self.menu_animation_progress = 0.0  # Reset animation
-        elif action.startswith("level_"):
-            # Load specific level for replay
-            level_num = int(action.split("_")[1])
-            self.load_level(level_num)
-        elif action == "about":
-            self.menu_state = "about"
-            self.selected_button = 0
-            self.menu_buttons = []
-            self.menu_animation_progress = 0.0  # Reset animation
-        elif action == "clear":
-            # Clear progress and restart
-            self.save_manager.clear_progress()
-            self.level_num = 1
-            self.best_times = {}
-            self.total_play_time = 0
-            self.menu_buttons = []
-            self.menu_animation_progress = 0.0  # Reset animation
-        elif action == "quit":
-            pygame.quit()
-            sys.exit()
-        elif action == "back":
-            self.menu_state = "main"
-            self.selected_button = 0
-            self.menu_buttons = []
-            self.menu_animation_progress = 0.0  # Reset animation
-    
-    def create_menu_buttons(self):
-        """Create button definitions for current menu state"""
-        self.menu_buttons = []
-        button_width = 280
-        button_height = 50
-        center_x = self.width // 2
-        start_y = 180
-        spacing = 60
-        
-        if self.menu_state == "main":
-            buttons = [
-                {"text": self.t("press_enter"), "action": "play", "icon": "▶"},
-                {"text": "Levels", "action": "levels", "icon": "📋"},
-                {"text": "Settings", "action": "settings", "icon": "⚙"},
-                {"text": self.t("toggle_theme"), "action": "theme", "icon": "◐"},
-                {"text": self.t("toggle_lang"), "action": "lang", "icon": "🌐"},
-                {"text": "About", "action": "about", "icon": "ℹ"},
-                {"text": self.t("press_clear"), "action": "clear", "icon": "✖"},
-                {"text": self.t("press_quit"), "action": "quit", "icon": "✕"},
-            ]
-        elif self.menu_state == "settings":
-            buttons = [
-                {"text": f"Theme: {self.theme_mode.capitalize()}", "action": "theme", "icon": "◐"},
-                {"text": f"Language: {'English' if self.language == 'en' else 'Persian'}", "action": "lang", "icon": "🌐"},
-                {"text": f"Input: {self.input_mode.capitalize()}", "action": "input_mode", "icon": "⌨"},
-                {"text": f"Move Speed: {self.move_speed_setting}", "action": "speed_up", "icon": "⬆"},
-                {"text": f"Mouse Sens: {self.mouse_sensitivity}", "action": "sens_up", "icon": "⬆"},
-                {"text": f"High Contrast: {'On' if self.high_contrast_mode else 'Off'}", "action": "contrast", "icon": "◑"},
-                {"text": f"Tab Nav: {'On' if self.tab_navigation else 'Off'}", "action": "tabnav", "icon": "⇥"},
-                {"text": f"Player Color", "action": "pcolor", "icon": "🎨"},
-                {"text": "Back", "action": "back", "icon": "◀"},
-            ]
-        elif self.menu_state == "about":
-            buttons = [
-                {"text": "Back", "action": "back", "icon": "◀"},
-            ]
-        elif self.menu_state == "levels":
-            buttons = [
-                {"text": "Back", "action": "back", "icon": "◀"},
-            ]
-            # Add level buttons for completed levels
-            for level in sorted(self.completed_levels, reverse=True):
-                time_str = f"{self.best_times.get(level, 0):.1f}s" if level in self.best_times else "--"
-                buttons.insert(-1, {"text": f"Level {level} ({time_str})", "action": f"level_{level}", "icon": "🎯"})
-        
-        for i, btn in enumerate(buttons):
-            rect = pygame.Rect(
-                center_x - button_width // 2,
-                start_y + i * spacing,
-                button_width,
-                button_height
-            )
-            self.menu_buttons.append({
-                "rect": rect,
-                "text": btn["text"],
-                "action": btn["action"],
-                "icon": btn["icon"],
-                "index": i
-            })
-    
-    def draw_button(self, button, is_hovered, is_selected, animation_progress=1.0):
-        """Draw a single menu button with effects"""
-        rect = button["rect"]
-        
-        # Determine colors based on state
-        if is_selected:
-            bg_color = COLOR_ACCENT
-            text_color = (255, 255, 255)
-            glow_intensity = 15
-        elif is_hovered:
-            bg_color = tuple(min(c + 30, 255) for c in COLOR_WALL)
-            text_color = COLOR_TEXT
-            glow_intensity = 8
-        else:
-            bg_color = COLOR_WALL
-            text_color = COLOR_TEXT_DIM
-            glow_intensity = 0
-        
-        # Apply animation alpha
-        alpha = int(255 * animation_progress)
-        
-        # Draw button background with rounded corners
-        button_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-        pygame.draw.rect(button_surf, (*bg_color, alpha), (0, 0, rect.width, rect.height), border_radius=12)
-        self.screen.blit(button_surf, rect.topleft)
-        
-        # Draw pulse effect for selected button
-        if is_selected and animation_progress >= 1:
-            pulse_intensity = int(10 + 5 * abs((self.anim_t % 60) - 30) / 30)
-            pulse_surf = pygame.Surface((rect.width + 30, rect.height + 30), pygame.SRCALPHA)
-            pygame.draw.rect(pulse_surf, (*COLOR_ACCENT, pulse_intensity), 
-                           (15, 15, rect.width, rect.height), border_radius=18)
-            self.screen.blit(pulse_surf, (rect.x - 15, rect.y - 15))
-        
-        # Draw glow effect if selected or hovered
-        if glow_intensity > 0 and animation_progress >= 1:
-            glow_surf = pygame.Surface((rect.width + 20, rect.height + 20), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surf, (*COLOR_ACCENT, glow_intensity), 
-                           (10, 10, rect.width, rect.height), border_radius=15)
-            self.screen.blit(glow_surf, (rect.x - 10, rect.y - 10))
-        
-        # Draw border
-        border_color = COLOR_ACCENT if is_selected else COLOR_WALL_EDGE
-        pygame.draw.rect(self.screen, border_color, rect, 2, border_radius=12)
-        
-        # Draw icon
-        font = self.persian_font if self.language == "fa" else self.font_medium
-        icon_surf = font.render(button["icon"], True, text_color)
-        icon_surf.set_alpha(alpha)
-        icon_x = rect.x + 20
-        icon_y = rect.centery - icon_surf.get_height() // 2
-        self.screen.blit(icon_surf, (icon_x, icon_y))
-        
-        # Draw text
-        text_surf = font.render(button["text"], True, text_color)
-        text_surf.set_alpha(alpha)
-        text_x = rect.centerx - text_surf.get_width() // 2
-        text_y = rect.centery - text_surf.get_height() // 2
-        self.screen.blit(text_surf, (text_x, text_y))
-    
     def draw_menu(self):
         self.screen.fill(COLOR_BG)
-        
-        # Draw maze preview in background
-        self.draw_maze_preview()
-        
-        # Update animation progress
-        if self.menu_animation_progress < 1.0:
-            self.menu_animation_progress = min(1.0, self.menu_animation_progress + self.menu_animation_speed)
-        
-        # Create buttons if not exists or window resized
-        if not self.menu_buttons:
-            self.create_menu_buttons()
-            self.menu_animation_progress = 0.0  # Reset animation on menu change
-        
-        # Draw title with glow effect and slide-in
-        if self.menu_state == "about":
-            title = self.font_big.render("About Maze Runner", True, COLOR_ACCENT)
-        else:
-            title = self.font_big.render(self.t("title"), True, COLOR_ACCENT)
-        title_x = self.width // 2 - title.get_width() // 2
-        title_y = int(60 + (100 - 60) * (1 - self.menu_animation_progress))  # Slide from top
-        
-        # Title glow
-        glow_surf = pygame.Surface((title.get_width() + 40, title.get_height() + 40), pygame.SRCALPHA)
-        pygame.draw.rect(glow_surf, (*COLOR_ACCENT, 20), (20, 20, title.get_width(), title.get_height()), border_radius=20)
-        self.screen.blit(glow_surf, (title_x - 20, title_y - 20))
-        
-        self.screen.blit(title, (title_x, title_y))
-        
-        # Draw about content
-        if self.menu_state == "about":
-            font_small = self.persian_font if self.language == "fa" else self.font_small
-            font_medium = self.persian_font if self.language == "fa" else self.font_medium
-            
-            about_lines = [
-                "Version: 1.0.0",
-                "",
-                "Features:",
-                "• Infinite procedurally generated mazes",
-                "• Random exit on outer walls",
-                "• Smooth pixel-based movement",
-                "• Dark/Light theme support",
-                "• Bilingual: English & Persian",
-                "• Mouse and keyboard controls",
-                "• Responsive window sizing",
-                "• Progress saving",
-                "",
-                "Controls:",
-                "• Arrow keys / WASD to move",
-                "• Mouse click to move",
-                "• Q to return to menu",
-                "• T to toggle theme",
-                "• L to toggle language",
-                "",
-                "Made with Python & Pygame",
-            ]
-            
-            y = 140
-            for line in about_lines:
-                alpha = int(255 * self.menu_animation_progress)
-                if "Features:" in line or "Controls:" in line:
-                    surf = font_medium.render(line, True, COLOR_ACCENT)
-                else:
-                    surf = font_small.render(line, True, COLOR_TEXT)
-                surf.set_alpha(alpha)
-                self.screen.blit(surf, (self.width // 2 - surf.get_width() // 2, y))
-                y += 28
-        elif self.menu_state == "levels":
-            font_small = self.persian_font if self.language == "fa" else self.font_small
-            font_medium = self.persian_font if self.language == "fa" else self.font_medium
-            
-            if not self.completed_levels:
-                title = font_medium.render("No completed levels yet", True, COLOR_TEXT_DIM)
-                self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 200))
-            else:
-                title = font_medium.render("Completed Levels", True, COLOR_ACCENT)
-                self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 140))
-                
-                count_text = font_small.render(f"Total: {len(self.completed_levels)} levels", True, COLOR_TEXT)
-                self.screen.blit(count_text, (self.width // 2 - count_text.get_width() // 2, 180))
-        else:
-            # Draw stats section with slide-in
-            stats_bg = pygame.Rect(self.width // 2 - 150, 120, 300, 40)
-            stats_y = int(120 + (150 - 120) * (1 - self.menu_animation_progress))  # Slide from top
-            stats_bg.y = stats_y
-            pygame.draw.rect(self.screen, COLOR_WALL, stats_bg, border_radius=10)
-            pygame.draw.rect(self.screen, COLOR_WALL_EDGE, stats_bg, 1, border_radius=10)
-            
-            stats_text = f"{self.t('level')} {self.level_num} | {self.t('levels_completed')}: {len([t for t in self.best_times.values() if t > 0])}"
-            font_small = self.persian_font if self.language == "fa" else self.font_small
-            stats_surf = font_small.render(stats_text, True, COLOR_TEXT)
-            self.screen.blit(stats_surf, (stats_bg.centerx - stats_surf.get_width() // 2, stats_bg.centery - stats_surf.get_height() // 2))
-        
-        # Draw buttons with staggered slide-in animation
-        mouse_pos = pygame.mouse.get_pos()
-        self.hovered_button = -1
-        
-        for i, button in enumerate(self.menu_buttons):
-            # Calculate staggered animation delay
-            button_delay = i * 0.1
-            button_progress = max(0, min(1, (self.menu_animation_progress - button_delay) / 0.3))
-            
-            # Apply slide-in offset
-            original_y = button["rect"].y
-            slide_offset = int(100 * (1 - button_progress))
-            button["rect"].y = original_y + slide_offset
-            
-            is_hovered = button["rect"].collidepoint(mouse_pos) and button_progress >= 1
-            is_selected = (i == self.selected_button)
-            
-            if is_hovered:
-                self.hovered_button = i
-                # Play hover sound if this is a new hover
-                if self.hovered_button != self.last_hovered_button and button_progress >= 1:
-                    self.sound.play("hover")
-                    self.last_hovered_button = i
-            
-            # Only draw if animation has started
-            if button_progress > 0:
-                self.draw_button(button, is_hovered, is_selected, button_progress)
-            
-            # Reset rect position
-            button["rect"].y = original_y
-        
-        # Draw instructions at bottom with fade-in
-        if self.menu_state == "about":
-            instructions = "Press Back to return"
-        else:
-            instructions = self.t("menu_move") + " | " + self.t("menu_find_exit")
-        inst_surf = font_small.render(instructions, True, COLOR_TEXT_DIM)
-        inst_alpha = int(255 * self.menu_animation_progress)
-        inst_surf.set_alpha(inst_alpha)
-        self.screen.blit(inst_surf, (self.width // 2 - inst_surf.get_width() // 2, self.height - 40))
+        title = self.font_big.render("Maze Runner", True, COLOR_ACCENT)
+        self.screen.blit(title, (self.width // 2 - title.get_width() // 2, 80))
+
+        lines = [
+            "Move with Arrow Keys or WASD",
+            "Reach the yellow exit before time runs out",
+            "Each level is bigger and harder than the last",
+            "",
+            "Press ENTER to start",
+            "Press ESC to quit",
+        ]
+        y = 200
+        for line in lines:
+            surf = self.font_small.render(line, True, COLOR_TEXT)
+            self.screen.blit(surf, (self.width // 2 - surf.get_width() // 2, y))
+            y += 32
 
     def draw(self):
         if self.state == STATE_MENU:
@@ -932,20 +204,14 @@ class Game:
         self.draw_hud()
 
         if self.state == STATE_WIN:
-            font = self.persian_font if self.language == "fa" else self.font_big
-            title_surf = font.render(f"{self.t('level_complete')} Time: {self.elapsed:.1f}s", True, COLOR_GOAL)
-            self.screen.blit(title_surf,
-                          (self.width // 2 - title_surf.get_width() // 2, self.height // 2 - 60))
-            
-            font_sub = self.persian_font if self.language == "fa" else self.font_medium
-            sub_surf = font_sub.render(self.t("next_replay_menu"), True, COLOR_TEXT_DIM)
-            self.screen.blit(sub_surf,
-                          (self.width // 2 - sub_surf.get_width() // 2, self.height // 2))
-        
-        # Draw quit button in corner
-        font_small = self.persian_font if self.language == "fa" else self.font_small
-        quit_btn = font_small.render(self.t("quit_menu"), True, COLOR_TEXT_DIM)
-        self.screen.blit(quit_btn, (10, self.height - 30))
+            self.draw_center_message(
+                "You Win!", "ENTER for next level   |   R to replay", COLOR_GOAL)
+        elif self.state == STATE_LOSE:
+            self.draw_center_message(
+                "Time's Up!", "R to try again   |   ESC to quit", COLOR_DANGER)
+        elif self.state == STATE_GAME_COMPLETE:
+            self.draw_center_message(
+                "Congratulations! You beat all levels", "R to restart from level 1", COLOR_GOAL)
 
         pygame.display.flip()
 
@@ -957,67 +223,35 @@ class Game:
                     running = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
-                        if self.state == STATE_PLAYING:
-                            self.state = STATE_MENU
-                        else:
-                            running = False
+                        running = False
 
                     elif self.state == STATE_MENU:
-                        # Keyboard navigation
-                        if event.key == pygame.K_UP:
-                            if self.menu_buttons:
-                                self.selected_button = (self.selected_button - 1) % len(self.menu_buttons)
-                                self.sound.play("hover")
-                        elif event.key == pygame.K_DOWN:
-                            if self.menu_buttons:
-                                self.selected_button = (self.selected_button + 1) % len(self.menu_buttons)
-                                self.sound.play("hover")
-                        elif event.key == pygame.K_RETURN:
-                            if self.menu_buttons:
-                                self.sound.play("select")
-                                self.handle_menu_action(self.menu_buttons[self.selected_button]["action"])
-                        elif event.key == pygame.K_TAB and self.tab_navigation:
-                            if self.menu_buttons:
-                                self.selected_button = (self.selected_button + 1) % len(self.menu_buttons)
-                                self.sound.play("hover")
+                        if event.key == pygame.K_RETURN:
+                            self.load_level(1)
 
                     elif self.state == STATE_PLAYING:
-                        if event.key == pygame.K_q:
-                            self.state = STATE_MENU
+                        if event.key in (pygame.K_UP, pygame.K_w):
+                            self.try_move(0, -1)
+                        elif event.key in (pygame.K_DOWN, pygame.K_s):
+                            self.try_move(0, 1)
+                        elif event.key in (pygame.K_LEFT, pygame.K_a):
+                            self.try_move(-1, 0)
+                        elif event.key in (pygame.K_RIGHT, pygame.K_d):
+                            self.try_move(1, 0)
 
                     elif self.state == STATE_WIN:
                         if event.key == pygame.K_RETURN:
                             self.load_level(self.level_num + 1)
                         elif event.key == pygame.K_r:
                             self.load_level(self.level_num)
-                        elif event.key == pygame.K_q:
-                            self.state = STATE_MENU
 
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # Left click
-                        if self.state == STATE_MENU:
-                            mouse_pos = pygame.mouse.get_pos()
-                            for button in self.menu_buttons:
-                                if button["rect"].collidepoint(mouse_pos):
-                                    self.sound.play("select")
-                                    self.handle_menu_action(button["action"])
-                                    self.selected_button = button["index"]
-                                    break
-                        elif self.state == STATE_PLAYING:
-                            # Handle mouse click for movement (only if input mode allows)
-                            if self.input_mode in ["hybrid", "mouse"]:
-                                mouse_x, mouse_y = pygame.mouse.get_pos()
-                                # Convert to game coordinates (minus HUD)
-                                game_y = mouse_y - self.hud_height
-                                if game_y > 0:
-                                    self.mouse_target = (mouse_x, game_y)
+                    elif self.state == STATE_LOSE:
+                        if event.key == pygame.K_r:
+                            self.load_level(self.level_num)
 
-                elif event.type == pygame.VIDEORESIZE:
-                    # Handle window resize
-                    self.width, self.height = event.w, event.h
-                    self.screen = pygame.display.set_mode((self.width, self.height), pygame.RESIZABLE | pygame.DOUBLEBUF)
-                    self.menu_buttons = []  # Recreate buttons on resize
-
+                    elif self.state == STATE_GAME_COMPLETE:
+                        if event.key == pygame.K_r:
+                            self.load_level(1)
 
             self.update()
             self.draw()
